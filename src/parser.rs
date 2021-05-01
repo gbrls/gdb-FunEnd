@@ -19,7 +19,7 @@ pub enum GDBToken {
     Str(String),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum GDBVal {
     Record(HashMap<String, GDBVal>),
     List(Vec<GDBVal>),

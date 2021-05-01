@@ -19,9 +19,34 @@ use std::thread::sleep;
 mod debugger;
 mod parser;
 
-fn start_graphics() {
+fn build_text<'a>(
+    text: &str,
+    font: &sdl2::ttf::Font,
+    texture_creator: &'a sdl2::render::TextureCreator<sdl2::video::WindowContext>,
+) -> (sdl2::render::Texture<'a>, sdl2::rect::Rect) {
+    let surface = font
+        .render(text)
+        .blended_wrapped(sdl2::pixels::Color::RGBA(0xff, 0xff, 0xff, 0xa0), 700)
+        .unwrap();
+
+    let texture = texture_creator
+        .create_texture_from_surface(&surface)
+        .unwrap();
+
+    let sdl2::render::TextureQuery { width, height, .. } = texture.query();
+
+    let rect = sdl2::rect::Rect::new(10, 0, width, height);
+
+    (texture, rect)
+}
+
+fn start_graphics<F>(gdb_mutex: Arc<Mutex<debugger::DebuggerState>>, f: F)
+where
+    F: Fn(),
+{
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
+    let ttf_context = sdl2::ttf::init().unwrap();
 
     let window = video_subsystem
         .window("rust-sdl2 demo", 800, 600)
@@ -30,15 +55,42 @@ fn start_graphics() {
         .unwrap();
 
     let mut canvas = window.into_canvas().build().unwrap();
+    let mut font = ttf_context
+        .load_font("./assets/JetBrainsMono.ttf", 20)
+        .unwrap();
+
+    let texture_creator = canvas.texture_creator();
+
+    let surface = font
+        .render("Hello world")
+        .solid(sdl2::pixels::Color::RGB(0xff, 0xff, 0xff))
+        .unwrap();
+
+    let mut texture = texture_creator
+        .create_texture_from_surface(&surface)
+        .unwrap();
+
+    let sdl2::render::TextureQuery { width, height, .. } = texture.query();
+
+    let mut rect = sdl2::rect::Rect::new(10, 5, width, height);
 
     canvas.set_draw_color(Color::RGB(0, 255, 255));
     canvas.clear();
     canvas.present();
     let mut event_pump = sdl_context.event_pump().unwrap();
-    let mut i = 0;
     'running: loop {
-        i = (i + 1) % 255;
-        canvas.set_draw_color(Color::RGB(i, 64, 255 - i));
+        let mut gdb = gdb_mutex.lock().unwrap();
+        if let Some(str) = gdb.get_file() {
+            let (t, r) = build_text(&str, &font, &texture_creator);
+            texture = t;
+            println!("old rect {:?}", rect);
+            println!("new rect {:?}", r);
+            rect = r;
+
+            println!("=============>New text!");
+        }
+
+        canvas.set_draw_color(Color::RGB(10, 64, 245));
         canvas.clear();
         for event in event_pump.poll_iter() {
             match event {
@@ -52,7 +104,25 @@ fn start_graphics() {
         }
         // The rest of the game loop goes here...
 
+        let l_str = format!("{}", gdb.line);
+        let (t, mut r) = build_text(&l_str, &font, &texture_creator);
+
+        r.set_x(400);
+        r.set_y(10 + (gdb.line - 1) as i32 * 27);
+
+        canvas.copy(&t, None, Some(r)).unwrap();
+
+        canvas.set_draw_color(sdl2::pixels::Color::RGB(0xff, 0, 0xff));
+        r.set_x(0);
+        r.set_width(100);
+        r.set_height(10);
+        canvas.fill_rect(r);
+
+        canvas.copy(&texture, None, Some(rect)).unwrap();
+
         canvas.present();
+        f();
+        //std::thread::sleep(std::time::Duration::from_millis(10));
         //::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
     }
 }
@@ -91,13 +161,17 @@ fn start_process(sender: Sender<String>, receiver: Receiver<String>) -> Child {
     child
 }
 
-fn start_command_thread(mutex: Mutex<Sender<String>>) {
-    thread::spawn(move || loop {
-        let sender = mutex.lock().unwrap();
-        let mut input = String::new();
-        println!("Type the next command");
-        io::stdin().read_line(&mut input).unwrap();
-        sender.send(input).unwrap();
+fn start_command_thread(rx: Receiver<String>, gdb_mutex: Arc<Mutex<debugger::DebuggerState>>) {
+    thread::spawn(move || {
+        for line in rx {
+            let mut gdb = gdb_mutex.lock().unwrap();
+            print!("<{}>", line);
+            let vals = parser::parse(&line);
+            println!("{:#?}", &vals);
+            if let Ok(v) = vals {
+                gdb.update_file(&v);
+            }
+        }
     });
 }
 
@@ -107,12 +181,23 @@ fn main() -> Result<(), Error> {
 
     let mut child = start_process(tx1, rx2);
 
-    start_command_thread(Mutex::new(tx2.clone()));
+    let gdb_mutex = Arc::new(Mutex::new(debugger::DebuggerState::new()));
 
-    for line in rx1 {
-        print!("<{}>", line);
-        println!("{:#?}", parser::parse(&line));
-    }
+    start_command_thread(rx1, Arc::clone(&gdb_mutex));
+
+    thread::spawn(move || loop {
+        let mut input = String::new();
+        println!("Type the next command");
+        io::stdin().read_line(&mut input).unwrap();
+        tx2.send(input).unwrap();
+    });
+
+    start_graphics(Arc::clone(&gdb_mutex), move || {
+        //let mut input = String::new();
+        //println!("Type the next command");
+        //io::stdin().read_line(&mut input).unwrap();
+        //tx2.send(input).unwrap();
+    });
 
     child.kill()?;
     Ok(())
