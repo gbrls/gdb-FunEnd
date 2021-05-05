@@ -1,5 +1,6 @@
 use std::io::Read;
 
+/// Stores data about the current GDB execution.
 pub struct DebuggerState {
     files: std::collections::HashMap<String, String>,
     current_file: String,

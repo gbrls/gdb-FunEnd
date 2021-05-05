@@ -4,8 +4,8 @@ pub struct ParseError {
     cause: String,
 }
 
-/// Tokenizes GBD Strings
-/// format reference https://sourceware.org/gdb/onlinedocs/gdb/GDB_002fMI-Output-Syntax.html#GDB_002fMI-Output-Syntax
+/// Tokenizes GBD Strings,
+/// [GDB MI Reference](https://sourceware.org/gdb/onlinedocs/gdb/GDB_002fMI-Output-Syntax.html#GDB_002fMI-Output-Syntax)
 #[derive(Debug, PartialEq, Clone)]
 pub enum GDBToken {
     Comma,

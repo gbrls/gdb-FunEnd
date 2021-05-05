@@ -18,6 +18,7 @@ use std::thread::sleep;
 
 mod debugger;
 mod parser;
+mod ui;
 
 fn build_text<'a>(
     text: &str,
@@ -26,7 +27,7 @@ fn build_text<'a>(
 ) -> (sdl2::render::Texture<'a>, sdl2::rect::Rect) {
     let surface = font
         .render(text)
-        .blended_wrapped(sdl2::pixels::Color::RGBA(0xff, 0xff, 0xff, 0xa0), 700)
+        .blended_wrapped(sdl2::pixels::Color::RGBA(0xff, 0xff, 0xff, 0xff), 700)
         .unwrap();
 
     let texture = texture_creator
