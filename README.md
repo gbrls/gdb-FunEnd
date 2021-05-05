@@ -1,5 +1,6 @@
 # GDB FunEnd
 A fun gdb frontend!
+![](/images/ss0.png)
 # Why?
 First time I really needed GDB was when I was debugging the generated code from [a compiler that I was writing](https://github.com/gbrls/rust-microc).
 It work wonders to aid me in the debugging process, but the interface was really bad.
@@ -9,8 +10,13 @@ Recently I came across the idea of [Tools for Thought](https://numinous.producti
 > A tool that helps your thinking process, e.g: The Hindu–Arabic numeral system and Adobe Photoshop.
 
 So, this project is an attempt to create a tool for thought that helps people to reason more deeply about the workings of computer programs.
-# What?
+# Implementation
 Right now we have a vertical slice of the project (we have a thread running GDB that communicates to a thread that displays the source code).
+We have a few threads running, those are the main ones:
+- GDB thread, it pipes the stdin/stdout to and form the GDB's process.
+- Graphics thread.
+
+
 ### Why Rust?
 I first considered writing this in C++, but then I thought about writing multithreaded code in it.
 
