@@ -1,5 +1,7 @@
 use std::io::Read;
 
+use crate::debugger;
+
 /// Stores data about the current GDB execution.
 pub struct DebuggerState {
     files: std::collections::HashMap<String, String>,
@@ -47,42 +49,55 @@ impl DebuggerState {
     }
 
     pub fn update_file(&mut self, query: &crate::parser::GDBVal) {
-        use crate::parser::GDBVal;
-        if let GDBVal::Record(record) = query {
-            let q = String::from("frame");
-            if !record.contains_key(&q) {
-                return;
-            }
-            if let GDBVal::Record(frame) = &record[&q] {
-                let q = String::from("line");
-                if frame.contains_key(&q) {
-                    if let GDBVal::Str(line) = &frame[&q] {
-                        if let Ok(n) = line.parse::<u32>() {
-                            self.line = n;
-                        }
-                    }
+        DebuggerState::query_val(query, "frame", |val| {
+            DebuggerState::query_str(val, "line", |line| {
+                if let Ok(n) = line.parse::<u32>() {
+                    self.line = n;
                 }
-                let q = String::from("fullname");
-                if !frame.contains_key(&q) {
-                    return;
-                }
-                if let GDBVal::Str(filename) = &frame[&q] {
-                    self.load_file(filename).unwrap();
-                    return;
-                }
-            }
-        }
-        println!("No file open");
+            });
+
+            DebuggerState::query_str(val, "fullname", |filename| {
+                self.load_file(filename).unwrap();
+            });
+        });
     }
 
-    pub fn query_str<F>(query: &crate::parser::GDBVal, key: &str, mut f: F) where
-    F: FnMut(&crate::parser::GDBVal) {
-
+    // TODO: Write a single funtion to handle the multiple variants,
+    pub fn query_val<F>(query: &crate::parser::GDBVal, key: &str, mut f: F)
+    where
+        F: FnMut(&crate::parser::GDBVal),
+    {
         use crate::parser::GDBVal;
+        let mut found = false;
         if let GDBVal::Record(record) = query {
             if record.contains_key(key) {
                 f(&record[key]);
+                found = true;
+            } 
+        }
+
+        if !found {
+            println!("[QUERY] Expected {:?} found {:?}", key, query);
+        }
+    }
+
+    pub fn query_str<F>(query: &crate::parser::GDBVal, key: &str, mut f: F)
+    where
+        F: FnMut(&str),
+    {
+        use crate::parser::GDBVal;
+        let mut found = false;
+        if let GDBVal::Record(record) = query {
+            if record.contains_key(key) {
+                if let GDBVal::Str(s) = &record[key] {
+                    f(s);
+                    found = true;
+                }
             }
+        }
+
+        if !found {
+            println!("[QUERY] Expected {:?} found {:?}", key, query);
         }
     }
 
