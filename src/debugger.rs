@@ -8,6 +8,7 @@ pub struct DebuggerState {
     current_file: String,
     new_file: bool,
     pub line: u32,
+    pub variables: Vec<(String, String)>,
 }
 
 impl DebuggerState {
@@ -17,6 +18,7 @@ impl DebuggerState {
             current_file: String::new(),
             new_file: false,
             line: 1,
+            variables: Vec::new(),
         }
     }
 
@@ -59,6 +61,21 @@ impl DebuggerState {
             DebuggerState::query_str(val, "fullname", |filename| {
                 self.load_file(filename).unwrap();
             });
+
+            DebuggerState::query_list(val, "args", |args| {
+                self.variables = args
+                    .iter()
+                    .map(|record| {
+                        let mut vars = (String::from("A"), String::from("B"));
+
+                        if let crate::parser::GDBVal::Record(rec) = record {
+                            vars = (format!("{:?}", rec["name"]), format!("{:?}", rec["value"]));
+                        }
+
+                        return vars;
+                    })
+                    .collect();
+            });
         });
     }
 
@@ -73,7 +90,7 @@ impl DebuggerState {
             if record.contains_key(key) {
                 f(&record[key]);
                 found = true;
-            } 
+            }
         }
 
         if !found {
@@ -91,6 +108,26 @@ impl DebuggerState {
             if record.contains_key(key) {
                 if let GDBVal::Str(s) = &record[key] {
                     f(s);
+                    found = true;
+                }
+            }
+        }
+
+        if !found {
+            println!("[QUERY] Expected {:?} found {:?}", key, query);
+        }
+    }
+
+    pub fn query_list<F>(query: &crate::parser::GDBVal, key: &str, mut f: F)
+    where
+        F: FnMut(&Vec<crate::parser::GDBVal>),
+    {
+        use crate::parser::GDBVal;
+        let mut found = false;
+        if let GDBVal::Record(record) = query {
+            if record.contains_key(key) {
+                if let GDBVal::List(l) = &record[key] {
+                    f(l);
                     found = true;
                 }
             }

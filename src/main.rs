@@ -17,28 +17,15 @@ use std::{
 use std::thread::sleep;
 
 mod debugger;
+mod graphics;
 mod parser;
 mod ui;
 
-fn build_text<'a>(
-    text: &str,
-    font: &sdl2::ttf::Font,
-    texture_creator: &'a sdl2::render::TextureCreator<sdl2::video::WindowContext>,
-) -> (sdl2::render::Texture<'a>, sdl2::rect::Rect) {
-    let surface = font
-        .render(text)
-        .blended_wrapped(sdl2::pixels::Color::RGBA(0xff, 0xff, 0xff, 0xff), 700)
-        .unwrap();
+use graphics::build_text;
 
-    let texture = texture_creator
-        .create_texture_from_surface(&surface)
-        .unwrap();
-
-    let sdl2::render::TextureQuery { width, height, .. } = texture.query();
-
-    let rect = sdl2::rect::Rect::new(10, 0, width, height);
-
-    (texture, rect)
+fn draw_test(canvas: &mut sdl2::render::Canvas<sdl2::video::Window>) {
+    canvas.set_draw_color(Color::RGB(5, 5, 5));
+    canvas.clear();
 }
 
 fn start_graphics<F>(gdb_mutex: Arc<Mutex<debugger::DebuggerState>>, f: F)
@@ -82,7 +69,7 @@ where
     'running: loop {
         let mut gdb = gdb_mutex.lock().unwrap();
         if let Some(str) = gdb.get_file() {
-            let (t, r) = build_text(&str, &font, &texture_creator);
+            let (t, r) = build_text(&str, &font, &texture_creator, Color::RGB(0xff, 0xff, 0xff));
             texture = t;
             println!("old rect {:?}", rect);
             println!("new rect {:?}", r);
@@ -91,8 +78,9 @@ where
             println!("=============>New text!");
         }
 
-        canvas.set_draw_color(Color::RGB(5, 5, 50));
-        canvas.clear();
+        //canvas.set_draw_color(Color::RGB(5, 5, 50));
+        //canvas.clear();
+        draw_test(&mut canvas);
         for event in event_pump.poll_iter() {
             match event {
                 Event::Quit { .. }
@@ -106,7 +94,12 @@ where
         // The rest of the game loop goes here...
 
         let l_str = format!("{}", gdb.line);
-        let (t, mut r) = build_text(&l_str, &font, &texture_creator);
+        let (t, mut r) = build_text(
+            &l_str,
+            &font,
+            &texture_creator,
+            Color::RGB(0xa0, 0xa0, 0xff),
+        );
 
         r.set_x(400);
         r.set_y(10 + (gdb.line - 1) as i32 * 27);
@@ -120,6 +113,8 @@ where
         canvas.fill_rect(r);
 
         canvas.copy(&texture, None, Some(rect)).unwrap();
+
+        graphics::draw_variables(&mut canvas, &gdb.variables, &font, &texture_creator);
 
         canvas.present();
         f();

@@ -1,4 +1,4 @@
-int amazing_func(int x) {
+int amazing_func(int x, int idk) {
     int y = x;
     y *= 20;
     y /= 20;
@@ -8,6 +8,8 @@ int amazing_func(int x) {
     /*
         this is a crazy funcion
     */
+
+    idk = x & 2;
 
     return (y * y) / y;
 }

@@ -1,7 +1,7 @@
 #include "b.h"
 int fib(int x) {
 
-    x = amazing_func(x);
+    x = amazing_func(x, x * x);
 
     if (x < 2)
         return x;
