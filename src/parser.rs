@@ -23,7 +23,6 @@ pub enum GDBToken {
 pub enum GDBVal {
     Record(HashMap<String, GDBVal>),
     List(Vec<GDBVal>),
-    Number(u64),
     Str(String),
 }
 

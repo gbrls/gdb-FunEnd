@@ -91,7 +91,7 @@ where
             println!("=============>New text!");
         }
 
-        canvas.set_draw_color(Color::RGB(10, 64, 245));
+        canvas.set_draw_color(Color::RGB(5, 5, 50));
         canvas.clear();
         for event in event_pump.poll_iter() {
             match event {

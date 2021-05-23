@@ -75,6 +75,17 @@ impl DebuggerState {
         println!("No file open");
     }
 
+    pub fn query_str<F>(query: &crate::parser::GDBVal, key: &str, mut f: F) where
+    F: FnMut(&crate::parser::GDBVal) {
+
+        use crate::parser::GDBVal;
+        if let GDBVal::Record(record) = query {
+            if record.contains_key(key) {
+                f(&record[key]);
+            }
+        }
+    }
+
     /// We will use this funcion to store the frame and query it's values
     fn frame(
         &self,
