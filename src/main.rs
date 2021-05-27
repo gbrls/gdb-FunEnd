@@ -1,5 +1,7 @@
 extern crate sdl2;
 
+//TODO: Rewrite the threading code.
+
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
