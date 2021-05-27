@@ -1,18 +1,20 @@
 #include "b.h"
-int fib(int x) {
+int do_something(int x, int y) {
+    x *= 2;
+    y += 5;
 
-    x = amazing_func(x, x * x);
+    x *= y;
 
-    if (x < 2)
-        return x;
-    else
-        return fib(x - 1) + fib(x - 2);
+    x -= 1;
+
+    x /= y;
+
+    return x;
 }
 
 int main() {
-    int a[5];
-    a[5] = 10;
-    a[7] = fib(a[5]);
+    
+    int z = do_something(2, 5);
 
     return 0;
 }

@@ -133,6 +133,7 @@ fn start_process_thread(child: &mut Child, sender: Sender<String>, receiver: Rec
         thread::spawn(move || loop {
             let mut line = String::new();
             f.read_line(&mut line).unwrap();
+            //TODO: Parse the line here and maybe write to the GDB State
             sender.send(line).unwrap();
         });
 
