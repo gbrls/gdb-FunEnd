@@ -12,6 +12,7 @@ pub struct DebuggerState {
     new_file: bool,
     pub line: u32,
     pub variables: Vec<(String, String)>,
+    pub asm: Vec<String>,
 }
 
 impl DebuggerState {
@@ -24,6 +25,7 @@ impl DebuggerState {
             new_file: false,
             line: 1,
             variables: Vec::new(),
+            asm: Vec::new(),
         }
     }
 
@@ -84,6 +86,7 @@ impl DebuggerState {
             });
         }
 
+        // Querying stuff from the frame like filename, funcion arguments, current line
         DebuggerState::query_val(query, "frame", |val| {
             // updating current line
             DebuggerState::query_str(val, "line", |line| {
@@ -108,10 +111,33 @@ impl DebuggerState {
                             vars = (format!("{:?}", rec["name"]), format!("{:?}", rec["value"]));
                         }
 
-                        return vars;
+                        vars
                     })
                     .collect();
             });
+        });
+
+        // Reading disassembled code
+        // TODO: separate assembly code for each funcion in a hashmap
+        DebuggerState::query_list(query, "asm_insns", |lines| {
+            for line in lines {
+                DebuggerState::query_str(line, "offset", |off| {
+                    if let Ok(idx) = off.parse::<usize>() {
+                        if self.asm.len() <= idx {
+                            self.asm.resize(idx + 1, String::new());
+                        }
+
+                        DebuggerState::query_str(line, "address", |addr| {
+                            DebuggerState::query_str(line, "inst", |i| {
+                                let fmt = format!("{} {}", addr, i);
+                                self.asm[idx] = fmt;
+                            });
+                        })
+                    }
+                })
+            }
+
+            println!("Instructions {:?}", self.asm);
         });
     }
 

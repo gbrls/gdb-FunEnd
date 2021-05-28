@@ -30,12 +30,13 @@ pub fn build_text<'a>(
 pub fn draw_text<'a>(
     canvas: &mut Canvas,
     text: &str,
+    color: Color,
     x: i32,
     y: i32,
     font: &sdl2::ttf::Font,
     texture_creator: &'a sdl2::render::TextureCreator<sdl2::video::WindowContext>,
 ) -> Rect {
-    let (t, mut r) = build_text(text, &font, &texture_creator, Color::RGB(0xa0, 0xa0, 0xff));
+    let (t, mut r) = build_text(text, &font, &texture_creator, color);
 
     r.set_x(x);
     r.set_y(y);
@@ -57,8 +58,24 @@ pub fn draw_variables<'a>(
     texture_creator: &'a sdl2::render::TextureCreator<sdl2::video::WindowContext>,
 ) {
     for (i, (k, v)) in vars.iter().enumerate() {
-        draw_text(canvas, &k, 450, 10 + (i * 30) as i32, font, texture_creator);
-        draw_text(canvas, &v, 550, 10 + (i * 30) as i32, font, texture_creator);
+        draw_text(
+            canvas,
+            &k,
+            Color::RGB(0xa0, 0xa0, 0xff),
+            450,
+            10 + (i * 30) as i32,
+            font,
+            texture_creator,
+        );
+        draw_text(
+            canvas,
+            &v,
+            Color::RGB(0xa0, 0xa0, 0xff),
+            550,
+            10 + (i * 30) as i32,
+            font,
+            texture_creator,
+        );
     }
 }
 
@@ -71,6 +88,42 @@ pub fn draw_regs<'a>(
     let sy = 100;
     for (i, (k, v)) in vars.iter().enumerate() {
         let s = format!("{} = {}", k, v);
-        draw_text(canvas, &s, 500, sy + (i * 20) as i32, font, texture_creator);
+        draw_text(
+            canvas,
+            &s,
+            Color::RGB(0xa0, 0xa0, 0xff),
+            500,
+            sy + (i * 20) as i32,
+            font,
+            texture_creator,
+        );
+    }
+}
+
+pub fn draw_asm<'a>(
+    canvas: &mut Canvas,
+    asm: &[String],
+    font: &sdl2::ttf::Font,
+    texture_creator: &'a sdl2::render::TextureCreator<sdl2::video::WindowContext>,
+) {
+    let mut instructions = String::new();
+
+    for line in asm {
+        if !line.is_empty() {
+            instructions += line;
+            instructions.push('\n');
+        }
+    }
+
+    if !instructions.is_empty() {
+        draw_text(
+            canvas,
+            &instructions,
+            Color::RGB(0xff, 0x80, 0x80),
+            150,
+            250,
+            font,
+            texture_creator,
+        );
     }
 }

@@ -43,7 +43,7 @@ where
     let ttf_context = sdl2::ttf::init().unwrap();
 
     let window = video_subsystem
-        .window("rust-sdl2 demo", 800, 600)
+        .window("rust-sdl2 demo", 1000, 950)
         .position_centered()
         .build()
         .unwrap();
@@ -101,13 +101,32 @@ where
             send_command("step\n", sender).unwrap();
             std::thread::sleep(std::time::Duration::from_millis(50));
             send_command("-data-list-register-values d 0 1 2 3 4 5\n", sender).unwrap();
-        }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            send_command(
+                r#"
+                -data-disassemble -s $pc -e "$pc + 20" -- 0
+            "#,
+                sender,
+            )
+            .unwrap();
 
+            //std::thread::sleep(std::time::Duration::from_millis(50));
+            //send_command("-stack-list-frames\n", sender).unwrap();
+        }
         if new_keys.contains(&Keycode::Left) {
             send_command("reverse-step\n", sender).unwrap();
         }
         if new_keys.contains(&Keycode::R) {
             send_command("-data-list-register-values d 0 1 2 3 4 5\n", sender).unwrap();
+        }
+        if new_keys.contains(&Keycode::D) {
+            send_command(
+                r#"
+                -data-disassemble -s $pc -e "$pc + 20" -- 0
+            "#,
+                sender,
+            )
+            .unwrap();
         }
 
         prev_keys = keys;
@@ -132,6 +151,7 @@ where
 
         graphics::draw_variables(&mut canvas, &gdb.variables, &font_small, &texture_creator);
         graphics::draw_regs(&mut canvas, &gdb.registers, &font_small, &texture_creator);
+        graphics::draw_asm(&mut canvas, &gdb.asm, &font_small, &texture_creator);
 
         canvas.present();
         f();
@@ -160,10 +180,10 @@ fn start_process_thread(
         loop {
             let mut line = String::new();
             f.read_line(&mut line).unwrap();
-            print!("Line: {}", line);
+            print!("[LINE] {}", line);
 
             let vals = parser::parse(&line);
-            println!("{:#?}", &vals);
+            println!("[PARSER] {:#?}", &vals);
 
             if let Ok(v) = vals {
                 // Here we try to limit the scope were we hold the mutex
