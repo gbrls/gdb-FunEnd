@@ -5,8 +5,10 @@ extern crate sdl2;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
+use sdl2::rect::Rect;
 use std::io::{BufRead, BufReader, Error, Write};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::sync::mpsc::SendError;
 use std::sync::mpsc::{channel, Receiver, Sender, TryRecvError};
 use std::sync::{atomic::AtomicBool, atomic::Ordering, Arc, Mutex};
 use std::thread;
@@ -15,6 +17,8 @@ use std::{
     process,
     time::Duration,
 };
+
+use std::collections::HashSet;
 
 use std::thread::sleep;
 
@@ -30,7 +34,7 @@ fn draw_test(canvas: &mut sdl2::render::Canvas<sdl2::video::Window>) {
     canvas.clear();
 }
 
-fn start_graphics<F>(gdb_mutex: Arc<Mutex<debugger::DebuggerState>>, f: F)
+fn start_graphics<F>(gdb_mutex: Arc<Mutex<debugger::DebuggerState>>, f: F, sender: &Sender<String>)
 where
     F: Fn(),
 {
@@ -47,6 +51,9 @@ where
     let mut canvas = window.into_canvas().build().unwrap();
     let mut font = ttf_context
         .load_font("./assets/JetBrainsMono.ttf", 20)
+        .unwrap();
+    let mut font_small = ttf_context
+        .load_font("./assets/JetBrainsMono.ttf", 16)
         .unwrap();
 
     let texture_creator = canvas.texture_creator();
@@ -68,20 +75,8 @@ where
     canvas.clear();
     canvas.present();
     let mut event_pump = sdl_context.event_pump().unwrap();
+    let mut prev_keys = HashSet::new();
     'running: loop {
-        let mut gdb = gdb_mutex.lock().unwrap();
-        if let Some(str) = gdb.get_file() {
-            let (t, r) = build_text(&str, &font, &texture_creator, Color::RGB(0xff, 0xff, 0xff));
-            texture = t;
-            println!("old rect {:?}", rect);
-            println!("new rect {:?}", r);
-            rect = r;
-
-            println!("=============>New text!");
-        }
-
-        //canvas.set_draw_color(Color::RGB(5, 5, 50));
-        //canvas.clear();
         draw_test(&mut canvas);
         for event in event_pump.poll_iter() {
             match event {
@@ -93,59 +88,96 @@ where
                 _ => {}
             }
         }
-        // The rest of the game loop goes here...
+        let keys = event_pump
+            .keyboard_state()
+            .pressed_scancodes()
+            .filter_map(Keycode::from_scancode)
+            .collect();
 
-        let l_str = format!("{}", gdb.line);
-        let (t, mut r) = build_text(
-            &l_str,
-            &font,
-            &texture_creator,
-            Color::RGB(0xa0, 0xa0, 0xff),
-        );
+        // Get the difference between the new and old sets.
+        let new_keys = &keys - &prev_keys;
 
-        r.set_x(400);
-        r.set_y(10 + (gdb.line - 1) as i32 * 27);
+        if new_keys.contains(&Keycode::Right) {
+            send_command("step\n", sender).unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            send_command("-data-list-register-values d 0 1 2 3 4 5\n", sender).unwrap();
+        }
 
-        canvas.copy(&t, None, Some(r)).unwrap();
+        if new_keys.contains(&Keycode::Left) {
+            send_command("reverse-step\n", sender).unwrap();
+        }
+        if new_keys.contains(&Keycode::R) {
+            send_command("-data-list-register-values d 0 1 2 3 4 5\n", sender).unwrap();
+        }
 
-        canvas.set_draw_color(sdl2::pixels::Color::RGB(0xff, 0, 0xff));
-        r.set_x(0);
-        r.set_width(100);
-        r.set_height(10);
-        canvas.fill_rect(r);
+        prev_keys = keys;
+
+        let mut gdb = gdb_mutex.lock().unwrap();
+        if let Some(str) = gdb.get_file() {
+            let (t, r) = build_text(&str, &font, &texture_creator, Color::RGB(0xff, 0xff, 0xff));
+            texture = t;
+            println!("old rect {:?}", rect);
+            println!("new rect {:?}", r);
+            rect = r;
+
+            println!("=============>New text!");
+        }
+
+        let r = Rect::new(0, 10 + (gdb.line - 1) as i32 * 27, 100, 10);
+
+        canvas.set_draw_color(sdl2::pixels::Color::RGB(0x40, 0, 0x40));
+        canvas.fill_rect(r).unwrap();
 
         canvas.copy(&texture, None, Some(rect)).unwrap();
 
-        graphics::draw_variables(&mut canvas, &gdb.variables, &font, &texture_creator);
+        graphics::draw_variables(&mut canvas, &gdb.variables, &font_small, &texture_creator);
+        graphics::draw_regs(&mut canvas, &gdb.registers, &font_small, &texture_creator);
 
         canvas.present();
         f();
-        //std::thread::sleep(std::time::Duration::from_millis(10));
-        //::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
+        std::thread::sleep(std::time::Duration::from_millis(10));
     }
 }
 
-fn start_process_thread(child: &mut Child, sender: Sender<String>, receiver: Receiver<String>) {
+fn start_process_thread(
+    child: &mut Child,
+    receiver: Receiver<String>,
+    gdb_mutex: Arc<Mutex<debugger::DebuggerState>>,
+) {
     let mut stdin = child.stdin.take().unwrap();
-    let mut cnt = 0;
     let stdout = child.stdout.take().unwrap();
+
+    // Receiving commands and sending them to GDB's stdin
     thread::spawn(move || {
-        let mut f = BufReader::new(stdout);
-
-        thread::spawn(move || loop {
-            let mut line = String::new();
-            f.read_line(&mut line).unwrap();
-            //TODO: Parse the line here and maybe write to the GDB State
-            sender.send(line).unwrap();
-        });
-
         for line in receiver {
             stdin.write_all(line.as_bytes()).unwrap();
         }
     });
+
+    // Reading and processing GDB stdout
+    thread::spawn(move || {
+        let mut f = BufReader::new(stdout);
+        loop {
+            let mut line = String::new();
+            f.read_line(&mut line).unwrap();
+            print!("Line: {}", line);
+
+            let vals = parser::parse(&line);
+            println!("{:#?}", &vals);
+
+            if let Ok(v) = vals {
+                // Here we try to limit the scope were we hold the mutex
+                let mut gdb = gdb_mutex.lock().unwrap();
+                gdb.update(&v);
+            }
+        }
+    });
 }
 
-fn start_process(sender: Sender<String>, receiver: Receiver<String>) -> Child {
+fn start_process(
+    receiver: Receiver<String>,
+    gdb_mutex: Arc<Mutex<debugger::DebuggerState>>,
+) -> Child {
     let mut child = Command::new("gdb")
         .arg("--interpreter=mi3")
         .arg("./examples/a.exe")
@@ -154,49 +186,33 @@ fn start_process(sender: Sender<String>, receiver: Receiver<String>) -> Child {
         .spawn()
         .expect("Failed to start process");
 
-    start_process_thread(&mut child, sender, receiver);
+    start_process_thread(&mut child, receiver, gdb_mutex);
     println!("Started process: {}", child.id());
 
     child
 }
 
-fn start_command_thread(rx: Receiver<String>, gdb_mutex: Arc<Mutex<debugger::DebuggerState>>) {
-    thread::spawn(move || {
-        for line in rx {
-            let mut gdb = gdb_mutex.lock().unwrap();
-            print!("<{}>", line);
-            let vals = parser::parse(&line);
-            println!("{:#?}", &vals);
-            if let Ok(v) = vals {
-                gdb.update_file(&v);
-            }
-        }
-    });
+pub fn send_command(command: &str, sender: &Sender<String>) -> Result<(), SendError<String>> {
+    sender.send(String::from(command))?;
+
+    Ok(())
 }
 
 fn main() -> Result<(), Error> {
-    let (tx1, rx1) = channel();
-    let (tx2, rx2) = channel();
-
-    let mut child = start_process(tx1, rx2);
+    let (tx, rx) = channel();
 
     let gdb_mutex = Arc::new(Mutex::new(debugger::DebuggerState::new()));
 
-    start_command_thread(rx1, Arc::clone(&gdb_mutex));
+    let mut child = start_process(rx, Arc::clone(&gdb_mutex));
 
-    thread::spawn(move || loop {
-        let mut input = String::new();
-        println!("Type the next command");
-        io::stdin().read_line(&mut input).unwrap();
-        tx2.send(input).unwrap();
-    });
+    thread::sleep(std::time::Duration::from_millis(100));
+    send_command("start\n", &tx).unwrap();
+    thread::sleep(std::time::Duration::from_millis(100));
+    //TODO: this doesn't work on windows (Test if this works on Linux)
+    send_command("target record-full\n", &tx).unwrap();
+    send_command("-data-list-register-names\n", &tx).unwrap();
 
-    start_graphics(Arc::clone(&gdb_mutex), move || {
-        //let mut input = String::new();
-        //println!("Type the next command");
-        //io::stdin().read_line(&mut input).unwrap();
-        //tx2.send(input).unwrap();
-    });
+    start_graphics(Arc::clone(&gdb_mutex), move || {}, &tx);
 
     child.kill()?;
     Ok(())

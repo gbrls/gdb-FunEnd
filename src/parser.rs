@@ -19,6 +19,7 @@ pub enum GDBToken {
     Str(String),
 }
 
+// Implement a pretty print
 #[derive(Debug, Clone)]
 pub enum GDBVal {
     Record(HashMap<String, GDBVal>),

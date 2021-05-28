@@ -1,10 +1,13 @@
 use std::io::Read;
 
-use crate::debugger;
+use crate::parser;
+use std::collections::HashMap;
 
 /// Stores data about the current GDB execution.
 pub struct DebuggerState {
-    files: std::collections::HashMap<String, String>,
+    files: HashMap<String, String>,
+    register_names: HashMap<String, String>,
+    pub registers: HashMap<String, String>,
     current_file: String,
     new_file: bool,
     pub line: u32,
@@ -14,7 +17,9 @@ pub struct DebuggerState {
 impl DebuggerState {
     pub fn new() -> DebuggerState {
         DebuggerState {
-            files: std::collections::HashMap::new(),
+            files: HashMap::new(),
+            register_names: HashMap::new(),
+            registers: HashMap::new(),
             current_file: String::new(),
             new_file: false,
             line: 1,
@@ -50,18 +55,49 @@ impl DebuggerState {
         Ok(())
     }
 
-    pub fn update_file(&mut self, query: &crate::parser::GDBVal) {
+    pub fn update(&mut self, query: &crate::parser::GDBVal) {
+        // Reading register mappings
+        if self.register_names.is_empty() {
+            DebuggerState::query_list(query, "register-names", |names| {
+                for (i, name) in names.iter().enumerate() {
+                    if let parser::GDBVal::Str(s) = name {
+                        if !s.is_empty() {
+                            self.register_names.insert(i.to_string(), s.to_owned());
+                        }
+                    }
+                }
+            });
+            println!("Registers names: {:?}", self.register_names);
+        } else {
+            // If we already have the register names mapped we'll look for their values
+            DebuggerState::query_list(query, "register-values", |regs| {
+                for reg in regs {
+                    DebuggerState::query_str(reg, "number", |number| {
+                        let k = String::from(number);
+                        DebuggerState::query_str(reg, "value", |value| {
+                            let v = String::from(value);
+                            self.registers.insert(self.register_names[&k].clone(), v);
+                        });
+                    });
+                }
+                println!("Registers vals: {:?}", self.registers);
+            });
+        }
+
         DebuggerState::query_val(query, "frame", |val| {
+            // updating current line
             DebuggerState::query_str(val, "line", |line| {
                 if let Ok(n) = line.parse::<u32>() {
                     self.line = n;
                 }
             });
 
+            // updating current file
             DebuggerState::query_str(val, "fullname", |filename| {
                 self.load_file(filename).unwrap();
             });
 
+            // reading current funcion arguments
             DebuggerState::query_list(val, "args", |args| {
                 self.variables = args
                     .iter()
@@ -142,7 +178,7 @@ impl DebuggerState {
     fn frame(
         &self,
         query: &crate::parser::GDBVal,
-    ) -> Option<std::collections::HashMap<String, crate::parser::GDBVal>> {
+    ) -> Option<HashMap<String, crate::parser::GDBVal>> {
         use crate::parser::GDBVal;
         if let GDBVal::Record(record) = query {
             let q = String::from("frame");

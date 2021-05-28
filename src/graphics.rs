@@ -1,5 +1,6 @@
 type Canvas = sdl2::render::Canvas<sdl2::video::Window>;
-use sdl2::pixels::Color;
+use sdl2::{pixels::Color, rect::Rect};
+use std::collections::HashMap;
 
 //pub struct GraphicsContext<'a, 'b> {
 //    font: sdl2::ttf::Font<'a, 'b>,
@@ -33,23 +34,43 @@ pub fn draw_text<'a>(
     y: i32,
     font: &sdl2::ttf::Font,
     texture_creator: &'a sdl2::render::TextureCreator<sdl2::video::WindowContext>,
-) {
+) -> Rect {
     let (t, mut r) = build_text(text, &font, &texture_creator, Color::RGB(0xa0, 0xa0, 0xff));
 
     r.set_x(x);
     r.set_y(y);
 
     canvas.copy(&t, None, Some(r)).unwrap();
+
+    r
+}
+
+pub fn draw_rect(canvas: &mut Canvas, r: &Rect, c: Color) {
+    canvas.set_draw_color(c);
+    canvas.fill_rect(*r).unwrap();
 }
 
 pub fn draw_variables<'a>(
     canvas: &mut Canvas,
-    vars: &Vec<(String, String)>,
+    vars: &[(String, String)],
     font: &sdl2::ttf::Font,
     texture_creator: &'a sdl2::render::TextureCreator<sdl2::video::WindowContext>,
 ) {
     for (i, (k, v)) in vars.iter().enumerate() {
-        draw_text(canvas, &k, 300, 10 + (i * 30) as i32, font, texture_creator);
-        draw_text(canvas, &v, 450, 10 + (i * 30) as i32, font, texture_creator);
+        draw_text(canvas, &k, 450, 10 + (i * 30) as i32, font, texture_creator);
+        draw_text(canvas, &v, 550, 10 + (i * 30) as i32, font, texture_creator);
+    }
+}
+
+pub fn draw_regs<'a>(
+    canvas: &mut Canvas,
+    vars: &HashMap<String, String>,
+    font: &sdl2::ttf::Font,
+    texture_creator: &'a sdl2::render::TextureCreator<sdl2::video::WindowContext>,
+) {
+    let sy = 100;
+    for (i, (k, v)) in vars.iter().enumerate() {
+        let s = format!("{} = {}", k, v);
+        draw_text(canvas, &s, 500, sy + (i * 20) as i32, font, texture_creator);
     }
 }
