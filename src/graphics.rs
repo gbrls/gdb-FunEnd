@@ -120,7 +120,7 @@ pub fn draw_asm<'a>(
             canvas,
             &instructions,
             Color::RGB(0xff, 0x80, 0x80),
-            150,
+            350,
             250,
             font,
             texture_creator,
