@@ -44,6 +44,21 @@ fn draw_test(canvas: &mut sdl2::render::Canvas<sdl2::video::Window>) {
     canvas.clear();
 }
 
+pub fn is_split(id: u32) -> bool {
+    unsafe {
+        let node = imgui::sys::igDockBuilderGetNode(id);
+        if std::ptr::null() == node {
+            false
+        } else {
+            imgui::sys::ImGuiDockNode_IsSplitNode(node)
+        }
+    }
+}
+
+pub fn is_window_docked() -> bool {
+    unsafe { imgui::sys::igIsWindowDocked() }
+}
+
 fn start_graphics<F>(gdb_mutex: Arc<Mutex<debugger::DebuggerState>>, f: F, sender: &Sender<String>)
 where
     F: Fn(),
@@ -151,13 +166,42 @@ where
         imgui.io_mut().delta_time = delta_s;
 
         let ui = imgui.frame();
+        let mut left_dock: u32 = 0;
+        let mut right_dock: u32 = 0;
+        let mut right_top: u32 = 0;
+        let mut right_down: u32 = 0;
+        let mut main_dock: u32 = 0;
 
         unsafe {
-            imgui::sys::igDockSpaceOverViewport(
+            main_dock = imgui::sys::igDockSpaceOverViewport(
                 imgui::sys::igGetMainViewport(),
                 0,
                 ::std::ptr::null::<imgui::sys::ImGuiWindowClass>(),
             );
+        }
+
+        if !is_split(main_dock) {
+            unsafe {
+                imgui::sys::igDockBuilderSplitNode(
+                    main_dock,
+                    imgui::Direction::Right as i32,
+                    0.3332,
+                    &mut right_dock,
+                    &mut left_dock,
+                );
+            }
+        }
+
+        if right_dock != 0 && !is_split(right_dock) {
+            unsafe {
+                imgui::sys::igDockBuilderSplitNode(
+                    right_dock,
+                    imgui::Direction::Up as i32,
+                    0.5f32,
+                    &mut right_top,
+                    &mut right_down,
+                );
+            }
         }
 
         let mut gdb = gdb_mutex.lock().unwrap();
@@ -169,6 +213,11 @@ where
             .resizable(true)
             .size([150f32, 300f32], imgui::Condition::Appearing)
             .build(&ui, || {
+                if !is_window_docked() && left_dock != 0 {
+                    unsafe {
+                        imgui::sys::igDockBuilderDockWindow(im_str!("Code").as_ptr(), left_dock)
+                    }
+                }
                 let mut x = 1.0f32;
                 for (i, l) in file_txt.lines().enumerate() {
                     if (i + 1) == gdb.line as usize {
@@ -185,6 +234,11 @@ where
             .resizable(true)
             .size([150f32, 300f32], imgui::Condition::Appearing)
             .build(&ui, || {
+                if !is_window_docked() && right_down != 0 {
+                    unsafe {
+                        imgui::sys::igDockBuilderDockWindow(im_str!("Vars").as_ptr(), right_down)
+                    }
+                }
                 ui.columns(2, im_str!("A"), true);
                 for (k, v) in &gdb.variables {
                     ui.text(k);
@@ -196,10 +250,15 @@ where
         //let wname = im_str!("Vars");
         //unsafe { imgui::sys::igDockBuilderDockWindow(wname.as_ptr(), imgui::sys::igGetMainViewport()); }
 
-        imgui::Window::new(im_str!("Registers"))
+        imgui::Window::new(im_str!("Regs"))
             .resizable(true)
             .size([150f32, 300f32], imgui::Condition::Appearing)
             .build(&ui, || {
+                if !is_window_docked() && right_top != 0 {
+                    unsafe {
+                        imgui::sys::igDockBuilderDockWindow(im_str!("Regs").as_ptr(), right_top)
+                    }
+                }
                 ui.columns(2, im_str!("A"), true);
                 for (k, v) in &gdb.registers {
                     ui.text(k);
