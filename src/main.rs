@@ -6,9 +6,10 @@ extern crate sdl2;
 use std::os::raw::c_char;
 
 /*
-Plans:
-    - Add imgui support
+TODO:
+    - Create a hashtable with the assembly code for each function
     - Use traits to Send, Parse and Draw
+    - Write a logger to use a imgui's window
  */
 
 use imgui::im_str;
@@ -129,7 +130,8 @@ where
         if new_keys.contains(&Keycode::Right) {
             send_command("step\n", sender).unwrap();
             std::thread::sleep(std::time::Duration::from_millis(50));
-            send_command("-data-list-register-values d 0 1 2 3 4 5\n", sender).unwrap();
+            //send_command("-data-list-register-values d 0 1 2 3 4 5\n", sender).unwrap();
+            send_command("-data-list-register-values x 0 1 2 3 4 5 6 7 8 9 10\n", sender).unwrap();
             std::thread::sleep(std::time::Duration::from_millis(50));
             send_command(
                 r#"
@@ -266,6 +268,40 @@ where
                     ui.text(v);
                     ui.next_column();
                 }
+            });
+
+        imgui::Window::new(im_str!("Asm"))
+            .resizable(true)
+            .size([200f32, 200f32], imgui::Condition::Appearing)
+            .build(&ui, || {
+                imgui::TabBar::new(im_str!("test"))
+                    .reorderable(true)
+                    .build(&ui, || {
+                        for (k, v) in &gdb.asm {
+                            let mut s: &imgui::ImStr;
+                            let mut c_str: std::ffi::CString;
+                            unsafe {
+                                c_str = std::ffi::CString::new(k.as_str()).unwrap();
+                                s = imgui::ImStr::from_utf8_with_nul_unchecked(
+                                    c_str.as_bytes_with_nul(),
+                                );
+                            }
+                            imgui::TabItem::new(s).build(&ui, || {
+                                ui.columns(2, im_str!("asm_col"), true);
+                                let mut code = String::new();
+                                for (addr, line) in v {
+                                    if line.len() > 0 {
+                                        //code += line;
+                                        //code.push('\n');
+                                        ui.text_colored([1f32, 1f32, 1f32, 1f32], addr);
+                                        ui.next_column();
+                                        ui.text_colored([1f32, 1f32, 1f32, 1f32], line);
+                                        ui.next_column();
+                                    }
+                                }
+                            })
+                        }
+                    })
             });
 
         //ui.show_demo_window(&mut true);

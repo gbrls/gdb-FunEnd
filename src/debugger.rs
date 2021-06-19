@@ -12,7 +12,7 @@ pub struct DebuggerState {
     new_file: bool,
     pub line: u32,
     pub variables: Vec<(String, String)>,
-    pub asm: Vec<String>,
+    pub asm: HashMap<String, Vec<(String, String)>>,
 }
 
 impl DebuggerState {
@@ -25,7 +25,7 @@ impl DebuggerState {
             new_file: false,
             line: 1,
             variables: Vec::new(),
-            asm: Vec::new(),
+            asm: HashMap::new(),
         }
     }
 
@@ -61,6 +61,7 @@ impl DebuggerState {
         // Reading register mappings
         if self.register_names.is_empty() {
             DebuggerState::query_list(query, "register-names", |names| {
+                println!("[REGS] #of regs = {}", names.len());
                 for (i, name) in names.iter().enumerate() {
                     if let parser::GDBVal::Str(s) = name {
                         if !s.is_empty() {
@@ -121,20 +122,29 @@ impl DebuggerState {
         // TODO: separate assembly code for each funcion in a hashmap
         DebuggerState::query_list(query, "asm_insns", |lines| {
             for line in lines {
-                DebuggerState::query_str(line, "offset", |off| {
-                    if let Ok(idx) = off.parse::<usize>() {
-                        if self.asm.len() <= idx {
-                            self.asm.resize(idx + 1, String::new());
-                        }
+                DebuggerState::query_str(line, "func-name", |fname| {
+                    DebuggerState::query_str(line, "offset", |off| {
+                        if let Ok(idx) = off.parse::<usize>() {
+                            if !self.asm.contains_key(fname) {
+                                self.asm.insert(fname.to_owned(), Vec::new());
+                            }
 
-                        DebuggerState::query_str(line, "address", |addr| {
-                            DebuggerState::query_str(line, "inst", |i| {
-                                let fmt = format!("{} {}", addr, i);
-                                self.asm[idx] = fmt;
-                            });
-                        })
-                    }
-                })
+                            if self.asm.get(fname).unwrap().len() <= idx {
+                                self.asm
+                                    .get_mut(fname)
+                                    .unwrap()
+                                    .resize(idx + 1, (String::new(), String::new()));
+                            }
+
+                            DebuggerState::query_str(line, "address", |addr| {
+                                DebuggerState::query_str(line, "inst", |i| {
+                                    let v = self.asm.get_mut(fname).unwrap()[idx] =
+                                        (addr.to_string(), i.to_string());
+                                });
+                            })
+                        }
+                    })
+                });
             }
 
             println!("Instructions {:?}", self.asm);
