@@ -7,12 +7,26 @@ use std::collections::HashMap;
 pub struct DebuggerState {
     files: HashMap<String, String>,
     register_names: HashMap<String, String>,
-    pub registers: HashMap<String, String>,
+    registers: HashMap<String, String>,
     current_file: String,
     new_file: bool,
     pub line: u32,
     pub variables: Vec<(String, String)>,
-    pub asm: HashMap<String, Vec<(String, String)>>,
+    pub asm: HashMap<String, Vec<(usize, String)>>,
+    pub pc_addr: HashMap<String, usize>,
+    register_order: HashMap<String, usize>,
+}
+
+fn register_ord() -> HashMap<String, usize> {
+    let mut h = HashMap::new();
+
+    let v = vec!["rax", "rbx", "rcx", "rdx", "rex", "rbp", "rsp"];
+
+    for (i, r) in v.iter().enumerate() {
+        h.insert(String::from(*r), i);
+    }
+
+    h
 }
 
 impl DebuggerState {
@@ -26,6 +40,8 @@ impl DebuggerState {
             line: 1,
             variables: Vec::new(),
             asm: HashMap::new(),
+            pc_addr: HashMap::new(),
+            register_order: register_ord(),
         }
     }
 
@@ -121,34 +137,62 @@ impl DebuggerState {
         // Reading disassembled code
         // TODO: separate assembly code for each funcion in a hashmap
         DebuggerState::query_list(query, "asm_insns", |lines| {
+            let mut first = true;
             for line in lines {
                 DebuggerState::query_str(line, "func-name", |fname| {
                     DebuggerState::query_str(line, "offset", |off| {
                         if let Ok(idx) = off.parse::<usize>() {
                             if !self.asm.contains_key(fname) {
-                                self.asm.insert(fname.to_owned(), Vec::new());
+                                self.asm.insert(fname.to_string(), Vec::new());
                             }
 
                             if self.asm.get(fname).unwrap().len() <= idx {
                                 self.asm
                                     .get_mut(fname)
                                     .unwrap()
-                                    .resize(idx + 1, (String::new(), String::new()));
+                                    .resize(idx + 1, (0, String::new()));
                             }
 
                             DebuggerState::query_str(line, "address", |addr| {
+                                let addr_usize = from_hex(addr);
+                                if !self.pc_addr.contains_key(fname) || first {
+                                    self.pc_addr.insert(fname.to_string(), addr_usize);
+                                }
+
+                                let cur_line = *self.pc_addr.get(fname).unwrap();
+                                if !first {
+                                    self.pc_addr.insert(
+                                        fname.to_string(),
+                                        std::cmp::min(cur_line, addr_usize),
+                                    );
+                                }
+
                                 DebuggerState::query_str(line, "inst", |i| {
                                     let v = self.asm.get_mut(fname).unwrap()[idx] =
-                                        (addr.to_string(), i.to_string());
+                                        (addr_usize, i.to_string());
                                 });
                             })
                         }
                     })
                 });
+                first = false;
             }
 
             println!("Instructions {:?}", self.asm);
         });
+
+        // Reading local variables
+        DebuggerState::query_list(query, "locals", |list| {
+            println!("[QUERY] {:#?}", list);
+            for val in list {
+                DebuggerState::query_str(val, "name", |name| {
+                    DebuggerState::query_str(val, "value", |value| {
+                        //println!("{:?} = {:?}", name, value);
+                        self.variables.push((name.to_string(), value.to_string()));
+                    })
+                });
+            }
+        })
     }
 
     // TODO: Write a single funtion to handle the multiple variants,
@@ -228,6 +272,25 @@ impl DebuggerState {
 
         None
     }
+
+    pub fn registers_ordered(&self) -> Vec<(&String, &String)> {
+        let mut v = Vec::new();
+        v = self
+            .registers
+            .iter()
+            .map(|(k, _)| (self.register_order.get(k).unwrap_or(&500), k))
+            .collect();
+        v.sort();
+        v.iter()
+            .map(|(_, k)| (*k, self.registers.get(*k).unwrap()))
+            .collect()
+    }
+}
+
+fn from_hex(hex: &str) -> usize {
+    use std::usize;
+    let without_prefix = hex.trim_start_matches("0x");
+    usize::from_str_radix(without_prefix, 16).unwrap()
 }
 
 mod tests {

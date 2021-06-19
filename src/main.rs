@@ -7,7 +7,6 @@ use std::os::raw::c_char;
 
 /*
 TODO:
-    - Create a hashtable with the assembly code for each function
     - Use traits to Send, Parse and Draw
     - Write a logger to use a imgui's window
  */
@@ -131,7 +130,15 @@ where
             send_command("step\n", sender).unwrap();
             std::thread::sleep(std::time::Duration::from_millis(50));
             //send_command("-data-list-register-values d 0 1 2 3 4 5\n", sender).unwrap();
-            send_command("-data-list-register-values x 0 1 2 3 4 5 6 7 8 9 10\n", sender).unwrap();
+            send_command(
+                "-data-list-register-values x 0 1 2 3 4 5 6 7 8 9 10\n",
+                sender,
+            )
+            .unwrap();
+
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            send_command("-stack-list-locals 1", sender).unwrap();
+
             std::thread::sleep(std::time::Duration::from_millis(50));
             send_command(
                 r#"
@@ -262,7 +269,7 @@ where
                     }
                 }
                 ui.columns(2, im_str!("A"), true);
-                for (k, v) in &gdb.registers {
+                for (k, v) in &gdb.registers_ordered() {
                     ui.text(k);
                     ui.next_column();
                     ui.text(v);
@@ -286,14 +293,28 @@ where
                                     c_str.as_bytes_with_nul(),
                                 );
                             }
+                            let pc_addr = gdb.pc_addr.get(k).unwrap();
                             imgui::TabItem::new(s).build(&ui, || {
+                                ui.text_colored(
+                                    [0.8f32, 0.8f32, 0.2f32, 1f32],
+                                    format!("{:#x}", pc_addr),
+                                );
+                                ui.separator();
                                 ui.columns(2, im_str!("asm_col"), true);
                                 let mut code = String::new();
                                 for (addr, line) in v {
                                     if line.len() > 0 {
-                                        //code += line;
-                                        //code.push('\n');
-                                        ui.text_colored([1f32, 1f32, 1f32, 1f32], addr);
+                                        if addr == pc_addr {
+                                            ui.text_colored(
+                                                [1f32, 0f32, 0f32, 1f32],
+                                                format!("{:#x}", addr),
+                                            );
+                                        } else {
+                                            ui.text_colored(
+                                                [1f32, 1f32, 1f32, 1f32],
+                                                format!("{:#x}", addr),
+                                            );
+                                        }
                                         ui.next_column();
                                         ui.text_colored([1f32, 1f32, 1f32, 1f32], line);
                                         ui.next_column();
