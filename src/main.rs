@@ -6,8 +6,8 @@ extern crate sdl2;
 use std::os::raw::c_char;
 
 /*
-TODO:
-    - !!!Huge refactor, the code is complete and utter trash!!!
+@TODO:
+    - Show line numbers!
     - Use traits to Send, Parse and Draw
     - Create a checkbox to enable debugging the parser, queries, etc;
     - Write a logger to use a imgui window
@@ -50,6 +50,12 @@ fn send_commands(sender: &Sender<String>, commands: &[&str], time: u64) {
     }
 }
 
+pub fn send_command(command: &str, sender: &Sender<String>) -> Result<(), SendError<String>> {
+    sender.send(String::from(command))?;
+
+    Ok(())
+}
+
 pub fn is_split(id: u32) -> bool {
     unsafe {
         let node = imgui::sys::igDockBuilderGetNode(id);
@@ -61,11 +67,13 @@ pub fn is_split(id: u32) -> bool {
     }
 }
 
-const STEP_COMMANDS: [&str; 4] = [
+const STEP_COMMANDS: [&str; 5] = [
     "step\n",
     "-data-list-register-values x 0 1 2 3 4 5 6 7 8 9 10\n",
     "-stack-list-locals 1\n",
     r#" -data-disassemble -s $pc -e "$pc + 20" -- 0 
+                "#,
+    r#" -data-read-memory $pc x 1 1 32
                 "#,
 ];
 
@@ -123,6 +131,8 @@ where
     let mut prev_keys = HashSet::new();
 
     let mut file_txt = String::from("no file loaded");
+
+    let mut input_buf = imgui::ImString::new("type something here");
 
     'running: loop {
         for event in event_pump.poll_iter() {
@@ -224,7 +234,7 @@ where
             file_txt = str;
         }
 
-        ui::docked_window(&ui, &gdb, "Code", left_top, |ui, gdb| {
+        ui::docked_window(&ui, &mut gdb, "Code", left_top, |ui, gdb| {
             let mut x = 1.0f32;
             for (i, l) in file_txt.lines().enumerate() {
                 if (i + 1) == gdb.line as usize {
@@ -236,7 +246,7 @@ where
             }
         });
 
-        ui::docked_window(&ui, &gdb, "Vars", right_down, |ui, gdb| {
+        ui::docked_window(&ui, &mut gdb, "Vars", right_down, |ui, gdb| {
             ui.columns(2, im_str!("A"), true);
             for (k, v) in &gdb.variables {
                 ui.text(k);
@@ -246,7 +256,7 @@ where
             }
         });
 
-        ui::docked_window(&ui, &gdb, "Regs", right_top, |ui, gdb| {
+        ui::docked_window(&ui, &mut gdb, "Regs", right_top, |ui, gdb| {
             ui.columns(2, im_str!("A"), true);
             for (k, v) in &gdb.registers_ordered() {
                 ui.text(k);
@@ -256,7 +266,7 @@ where
             }
         });
 
-        ui::docked_window(&ui, &gdb, "Asm", left_down, |ui, gdb| {
+        ui::docked_window(&ui, &mut gdb, "Asm", left_down, |ui, gdb| {
             {
                 imgui::TabBar::new(im_str!("test"))
                     .reorderable(true)
@@ -302,8 +312,32 @@ where
             }
         });
 
-        ui::docked_window(&ui, &gdb, "Console", left_down, |ui, gdb| {
+        ui::docked_window(&ui, &mut gdb, "Console", left_down, |ui, gdb| {
             ui.text_colored([1f32, 1f32, 1f32, 1f32], format!("{}", &gdb.console_output));
+            if imgui::InputText::new(ui, im_str!(""), &mut input_buf)
+                .enter_returns_true(true)
+                .build()
+            {
+                let mut cmd = String::from(input_buf.to_str());
+                cmd.push('\n');
+                send_command(&cmd, &sender).unwrap();
+                input_buf.clear();
+                //println!("[INPUT] Enter");
+            }
+        });
+
+        ui::docked_window(&ui, &gdb, "memory", right_down, |ui, gdb| {
+            let mut s = String::new();
+            for (i, line) in gdb.memory.iter().enumerate() {
+                s.push_str(&line);
+                s.push_str(" ");
+                if (i+1) % 7 == 0 {
+                    ui.text_colored([1f32, 1f32, 1f32, 1f32], &s);
+                    s.clear();
+                }
+            }
+
+            ui.text_colored([1f32, 1f32, 1f32, 1f32], &s);
         });
 
         //ui.show_demo_window(&mut true);
@@ -375,11 +409,6 @@ fn start_process(
     child
 }
 
-pub fn send_command(command: &str, sender: &Sender<String>) -> Result<(), SendError<String>> {
-    sender.send(String::from(command))?;
-
-    Ok(())
-}
 
 fn main() -> Result<(), Error> {
     let (tx, rx) = channel();
