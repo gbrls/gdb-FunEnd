@@ -1,4 +1,27 @@
 use std::{collections::HashMap, ops::Index};
+
+pub trait ConsoleReader {
+    fn read(&mut self, c: char);
+}
+
+struct SimpleReader {
+    text: String,
+}
+
+impl SimpleReader {
+    fn new() -> SimpleReader {
+        SimpleReader {
+            text: String::new(),
+        }
+    }
+}
+
+impl ConsoleReader for SimpleReader {
+    fn read(&mut self, c: char) {
+        self.text.push(c);
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ParseError {
     cause: String,
@@ -15,7 +38,6 @@ pub enum GDBToken {
     CloseB,
     Eq,
 
-    Number(u64),
     Str(String),
 }
 
@@ -27,16 +49,14 @@ pub enum GDBVal {
     Str(String),
 }
 
-pub fn parse(str: &str) -> Result<GDBVal, ParseError> {
-    let tokens = tokenize(str);
-    println!("{:?}", &tokens);
+pub fn parse(str: &str, reader: &mut impl ConsoleReader) -> Result<GDBVal, ParseError> {
+    //let mut reader = SimpleReader::new();
+    let tokens = tokenize(str, reader);
+    //TODO: Optionally write this to a logger
+    println!("[PARSER] {:?}", &tokens);
     let mut p = Parser::new(tokens);
 
     p.parse()
-}
-
-fn parse_helper(str: &str) {
-    let tokens = tokenize(str);
 }
 
 pub struct Parser {
@@ -153,24 +173,27 @@ fn number_or_string(input: &mut Vec<char>, str: bool) -> GDBToken {
         s.push(c);
     }
 
-    //println!("last = {:?}", input.last().unwrap());
-
     //TODO: convert to number if it's the case.
     GDBToken::Str(s)
 }
 
-pub fn tokenize(input: &str) -> Vec<GDBToken> {
+pub fn tokenize(input: &str, reader: &mut impl ConsoleReader) -> Vec<GDBToken> {
     use GDBToken::*;
     let mut tokens = vec![OpenPb];
     let mut chars: Vec<char> = input.as_bytes().iter().rev().map(|x| *x as char).collect();
 
-    //println!("{:?}", chars);
     let mut ignore = false;
 
     while !chars.is_empty() {
         let c = *chars.last().unwrap();
         chars.pop();
 
+        if ignore {
+            reader.read(c);
+        }
+
+        // Simple state machine with two states to
+        // ignore lines starting with a ~
         if c == '~' {
             ignore = true;
         }
@@ -216,8 +239,9 @@ mod tests {
     #[test]
     fn tk_test() {
         use super::*;
-        println!("{:?}", tokenize("ola=\"voce\",,="));
-        println!("{:?}", tokenize("{address=\"0x000107bc\",func-name=\"main\",offset=\"0\", inst=\"save  %sp, -112, %sp\"},"));
+        let mut r = SimpleReader::new();
+        println!("{:?}", tokenize("ola=\"voce\",,=", &mut r));
+        println!("{:?}", tokenize("{address=\"0x000107bc\",func-name=\"main\",offset=\"0\", inst=\"save  %sp, -112, %sp\"},", &mut r));
     }
 
     #[test]

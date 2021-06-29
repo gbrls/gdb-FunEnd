@@ -1,9 +1,7 @@
 use std::io::Read;
 
-use crate::parser::{self, ConsoleReader};
+use crate::parser;
 use std::collections::HashMap;
-
-// @TOMORROW Implement a memory viewer like a hexdump
 
 /// Stores data about the current GDB execution.
 pub struct DebuggerState {
@@ -17,81 +15,20 @@ pub struct DebuggerState {
     pub asm: HashMap<String, Vec<(usize, String)>>,
     pub pc_addr: HashMap<String, usize>,
     register_order: HashMap<String, usize>,
-    pub console_output: String,
 }
 
-const REG_ORD: [&str; 7] = ["rax", "rbx", "rcx", "rdx", "rex", "rbp", "rsp"];
-
-fn build_register_ord() -> HashMap<String, usize> {
+fn register_ord() -> HashMap<String, usize> {
     let mut h = HashMap::new();
 
-    for (i, r) in (&REG_ORD).iter().enumerate() {
+            let v = vec!["rax", "rbx", "rcx", "rdx", "rex", "rbp", "rsp"];
+
+    for (i, r) in v.iter().enumerate() {
         h.insert(String::from(*r), i);
     }
 
     h
 }
 
-fn query_val<F>(query: &crate::parser::GDBVal, key: &str, mut f: F)
-where
-    F: FnMut(&crate::parser::GDBVal),
-{
-    use crate::parser::GDBVal;
-    let mut found = false;
-    if let GDBVal::Record(record) = query {
-        if record.contains_key(key) {
-            f(&record[key]);
-            found = true;
-        }
-    }
-
-    if !found {
-        println!("[QUERY] Expected {:?} found {:?}", key, query);
-    }
-}
-
-fn query_str<F>(query: &crate::parser::GDBVal, key: &str, mut f: F)
-where
-    F: FnMut(&str),
-{
-    use crate::parser::GDBVal;
-    let mut found = false;
-    if let GDBVal::Record(record) = query {
-        if record.contains_key(key) {
-            if let GDBVal::Str(s) = &record[key] {
-                f(s);
-                found = true;
-            }
-        }
-    }
-
-    if !found {
-        println!("[QUERY] Expected {:?} found {:?}", key, query);
-    }
-}
-
-fn query_list<F>(query: &crate::parser::GDBVal, key: &str, mut f: F)
-where
-    F: FnMut(&Vec<crate::parser::GDBVal>),
-{
-    use crate::parser::GDBVal;
-    let mut found = false;
-    if let GDBVal::Record(record) = query {
-        if record.contains_key(key) {
-            if let GDBVal::List(l) = &record[key] {
-                f(l);
-                found = true;
-            }
-        }
-    }
-
-    if !found {
-        println!("[QUERY] Expected {:?} found {:?}", key, query);
-    }
-}
-
-// @Refactor maybe we could instead of storing all this data in a struct we could create a bunch of
-// funcions to fetch the data and just cache their results
 impl DebuggerState {
     pub fn new() -> DebuggerState {
         DebuggerState {
@@ -104,8 +41,7 @@ impl DebuggerState {
             variables: Vec::new(),
             asm: HashMap::new(),
             pc_addr: HashMap::new(),
-            register_order: build_register_ord(),
-            console_output: String::new(),
+            register_order: register_ord(),
         }
     }
 
@@ -140,7 +76,7 @@ impl DebuggerState {
     pub fn update(&mut self, query: &crate::parser::GDBVal) {
         // Reading register mappings
         if self.register_names.is_empty() {
-            query_list(query, "register-names", |names| {
+            DebuggerState::query_list(query, "register-names", |names| {
                 println!("[REGS] #of regs = {}", names.len());
                 for (i, name) in names.iter().enumerate() {
                     if let parser::GDBVal::Str(s) = name {
@@ -153,11 +89,11 @@ impl DebuggerState {
             println!("Registers names: {:?}", self.register_names);
         } else {
             // If we already have the register names mapped we'll look for their values
-            query_list(query, "register-values", |regs| {
+            DebuggerState::query_list(query, "register-values", |regs| {
                 for reg in regs {
-                    query_str(reg, "number", |number| {
+                    DebuggerState::query_str(reg, "number", |number| {
                         let k = String::from(number);
-                        query_str(reg, "value", |value| {
+                        DebuggerState::query_str(reg, "value", |value| {
                             let v = String::from(value);
                             self.registers.insert(self.register_names[&k].clone(), v);
                         });
@@ -168,21 +104,21 @@ impl DebuggerState {
         }
 
         // Querying stuff from the frame like filename, funcion arguments, current line
-        query_val(query, "frame", |val| {
+        DebuggerState::query_val(query, "frame", |val| {
             // updating current line
-            query_str(val, "line", |line| {
+            DebuggerState::query_str(val, "line", |line| {
                 if let Ok(n) = line.parse::<u32>() {
                     self.line = n;
                 }
             });
 
             // updating current file
-            query_str(val, "fullname", |filename| {
+            DebuggerState::query_str(val, "fullname", |filename| {
                 self.load_file(filename).unwrap();
             });
 
             // reading current funcion arguments
-            query_list(val, "args", |args| {
+            DebuggerState::query_list(val, "args", |args| {
                 self.variables = args
                     .iter()
                     .map(|record| {
@@ -199,11 +135,12 @@ impl DebuggerState {
         });
 
         // Reading disassembled code
-        query_list(query, "asm_insns", |lines| {
+        // TODO: separate assembly code for each funcion in a hashmap
+        DebuggerState::query_list(query, "asm_insns", |lines| {
             let mut first = true;
             for line in lines {
-                query_str(line, "func-name", |fname| {
-                    query_str(line, "offset", |off| {
+                DebuggerState::query_str(line, "func-name", |fname| {
+                    DebuggerState::query_str(line, "offset", |off| {
                         if let Ok(idx) = off.parse::<usize>() {
                             if !self.asm.contains_key(fname) {
                                 self.asm.insert(fname.to_string(), Vec::new());
@@ -216,7 +153,7 @@ impl DebuggerState {
                                     .resize(idx + 1, (0, String::new()));
                             }
 
-                            query_str(line, "address", |addr| {
+                            DebuggerState::query_str(line, "address", |addr| {
                                 let addr_usize = from_hex(addr);
                                 if !self.pc_addr.contains_key(fname) || first {
                                     self.pc_addr.insert(fname.to_string(), addr_usize);
@@ -230,8 +167,8 @@ impl DebuggerState {
                                     );
                                 }
 
-                                query_str(line, "inst", |i| {
-                                    self.asm.get_mut(fname).unwrap()[idx] =
+                                DebuggerState::query_str(line, "inst", |i| {
+                                    let v = self.asm.get_mut(fname).unwrap()[idx] =
                                         (addr_usize, i.to_string());
                                 });
                             })
@@ -245,11 +182,11 @@ impl DebuggerState {
         });
 
         // Reading local variables
-        query_list(query, "locals", |list| {
+        DebuggerState::query_list(query, "locals", |list| {
             println!("[QUERY] {:#?}", list);
             for val in list {
-                query_str(val, "name", |name| {
-                    query_str(val, "value", |value| {
+                DebuggerState::query_str(val, "name", |name| {
+                    DebuggerState::query_str(val, "value", |value| {
                         //println!("{:?} = {:?}", name, value);
                         self.variables.push((name.to_string(), value.to_string()));
                     })
@@ -258,37 +195,95 @@ impl DebuggerState {
         })
     }
 
+    // TODO: Write a single funtion to handle the multiple variants,
+    pub fn query_val<F>(query: &crate::parser::GDBVal, key: &str, mut f: F)
+    where
+        F: FnMut(&crate::parser::GDBVal),
+    {
+        use crate::parser::GDBVal;
+        let mut found = false;
+        if let GDBVal::Record(record) = query {
+            if record.contains_key(key) {
+                f(&record[key]);
+                found = true;
+            }
+        }
+
+        if !found {
+            println!("[QUERY] Expected {:?} found {:?}", key, query);
+        }
+    }
+
+    pub fn query_str<F>(query: &crate::parser::GDBVal, key: &str, mut f: F)
+    where
+        F: FnMut(&str),
+    {
+        use crate::parser::GDBVal;
+        let mut found = false;
+        if let GDBVal::Record(record) = query {
+            if record.contains_key(key) {
+                if let GDBVal::Str(s) = &record[key] {
+                    f(s);
+                    found = true;
+                }
+            }
+        }
+
+        if !found {
+            println!("[QUERY] Expected {:?} found {:?}", key, query);
+        }
+    }
+
+    pub fn query_list<F>(query: &crate::parser::GDBVal, key: &str, mut f: F)
+    where
+        F: FnMut(&Vec<crate::parser::GDBVal>),
+    {
+        use crate::parser::GDBVal;
+        let mut found = false;
+        if let GDBVal::Record(record) = query {
+            if record.contains_key(key) {
+                if let GDBVal::List(l) = &record[key] {
+                    f(l);
+                    found = true;
+                }
+            }
+        }
+
+        if !found {
+            println!("[QUERY] Expected {:?} found {:?}", key, query);
+        }
+    }
+
+    /// We will use this funcion to store the frame and query it's values
+    fn frame(
+        &self,
+        query: &crate::parser::GDBVal,
+    ) -> Option<HashMap<String, crate::parser::GDBVal>> {
+        use crate::parser::GDBVal;
+        if let GDBVal::Record(record) = query {
+            let q = String::from("frame");
+            if !record.contains_key(&q) {
+                return None;
+            }
+            if let GDBVal::Record(frame) = &record[&q] {
+                return Some(frame.clone());
+            }
+        }
+
+        None
+    }
+
     pub fn registers_ordered(&self) -> Vec<(&String, &String)> {
-        let mut _v = Vec::new();
-        _v = self
+        let mut v = Vec::new();
+        v = self
             .registers
             .iter()
             .map(|(k, _)| (self.register_order.get(k).unwrap_or(&500), k))
             .collect();
-        _v.sort();
-        _v.iter()
+        v.sort();
+        v.iter()
             .map(|(_, k)| (*k, self.registers.get(*k).unwrap()))
             .collect()
-    }
-}
-
-impl crate::parser::ConsoleReader for DebuggerState {
-    fn read(&mut self, c: char) {
-        // This is kind of ugly but it works
-        // We want to remove the prev \ iff we are not a \
-        // We also want to remove the "
-        match self.console_output.chars().last() {
-            Some(last) if last == '\\' => {
-                if c != '\\' {
-                    self.console_output.pop().unwrap();
-                }
-            }
-            _ if c != '\"' => {
-                self.console_output.push(c);
-            }
-
-            _ => {}
-        }
     }
 }
 

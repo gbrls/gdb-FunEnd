@@ -7,8 +7,10 @@ use std::os::raw::c_char;
 
 /*
 TODO:
+    - !!!Huge refactor, the code is complete and utter trash!!!
     - Use traits to Send, Parse and Draw
-    - Write a logger to use a imgui's window
+    - Create a checkbox to enable debugging the parser, queries, etc;
+    - Write a logger to use a imgui window
  */
 
 use imgui::im_str;
@@ -39,9 +41,13 @@ mod ui;
 use graphics::build_text;
 use std::cmp::max;
 
-fn draw_test(canvas: &mut sdl2::render::Canvas<sdl2::video::Window>) {
-    canvas.set_draw_color(Color::RGB(5, 5, 5));
-    canvas.clear();
+use ui::is_window_docked;
+
+fn send_commands(sender: &Sender<String>, commands: &[&str], time: u64) {
+    for command in commands {
+        send_command(command, &sender).unwrap();
+        thread::sleep(std::time::Duration::from_millis(time));
+    }
 }
 
 pub fn is_split(id: u32) -> bool {
@@ -55,9 +61,19 @@ pub fn is_split(id: u32) -> bool {
     }
 }
 
-pub fn is_window_docked() -> bool {
-    unsafe { imgui::sys::igIsWindowDocked() }
-}
+const STEP_COMMANDS: [&str; 4] = [
+    "step\n",
+    "-data-list-register-values x 0 1 2 3 4 5 6 7 8 9 10\n",
+    "-stack-list-locals 1\n",
+    r#" -data-disassemble -s $pc -e "$pc + 20" -- 0 
+                "#,
+];
+
+const STARTUP_COMMANDS: [&str; 3] = [
+    "start\n",
+    "target record-full\n",
+    "-data-list-register-names\n",
+];
 
 fn start_graphics<F>(gdb_mutex: Arc<Mutex<debugger::DebuggerState>>, f: F, sender: &Sender<String>)
 where
@@ -89,6 +105,12 @@ where
 
     let mut imgui = imgui::Context::create();
     imgui.io_mut().config_flags |= imgui::ConfigFlags::DOCKING_ENABLE;
+
+    let mut path = std::path::PathBuf::new();
+    path.push("imgui");
+    path.set_extension("ini");
+
+    //imgui.set_ini_filename(Some(path));
     imgui.set_ini_filename(None);
 
     let mut imgui_sdl2 = imgui_sdl2::ImguiSdl2::new(&mut imgui, &window);
@@ -126,42 +148,12 @@ where
         // Get the difference between the new and old sets.
         let new_keys = &keys - &prev_keys;
 
+        // Call step commands
         if new_keys.contains(&Keycode::Right) {
-            send_command("step\n", sender).unwrap();
-            std::thread::sleep(std::time::Duration::from_millis(50));
-            //send_command("-data-list-register-values d 0 1 2 3 4 5\n", sender).unwrap();
-            send_command(
-                "-data-list-register-values x 0 1 2 3 4 5 6 7 8 9 10\n",
-                sender,
-            )
-            .unwrap();
-
-            std::thread::sleep(std::time::Duration::from_millis(50));
-            send_command("-stack-list-locals 1", sender).unwrap();
-
-            std::thread::sleep(std::time::Duration::from_millis(50));
-            send_command(
-                r#"
-                -data-disassemble -s $pc -e "$pc + 20" -- 0
-            "#,
-                sender,
-            )
-            .unwrap();
+            send_commands(sender, &STEP_COMMANDS, 50);
         }
         if new_keys.contains(&Keycode::Left) {
             send_command("reverse-step\n", sender).unwrap();
-        }
-        if new_keys.contains(&Keycode::R) {
-            send_command("-data-list-register-values d 0 1 2 3 4 5\n", sender).unwrap();
-        }
-        if new_keys.contains(&Keycode::D) {
-            send_command(
-                r#"
-                -data-disassemble -s $pc -e "$pc + 20" -- 0
-            "#,
-                sender,
-            )
-            .unwrap();
         }
 
         prev_keys = keys;
@@ -176,6 +168,8 @@ where
 
         let ui = imgui.frame();
         let mut left_dock: u32 = 0;
+        let mut left_top: u32 = 0;
+        let mut left_down: u32 = 0;
         let mut right_dock: u32 = 0;
         let mut right_top: u32 = 0;
         let mut right_down: u32 = 0;
@@ -194,7 +188,7 @@ where
                 imgui::sys::igDockBuilderSplitNode(
                     main_dock,
                     imgui::Direction::Right as i32,
-                    0.3332,
+                    0.3f32,
                     &mut right_dock,
                     &mut left_dock,
                 );
@@ -213,74 +207,57 @@ where
             }
         }
 
+        if left_dock != 0 && !is_split(left_dock) {
+            unsafe {
+                imgui::sys::igDockBuilderSplitNode(
+                    left_dock,
+                    imgui::Direction::Up as i32,
+                    0.65f32,
+                    &mut left_top,
+                    &mut left_down,
+                );
+            }
+        }
+
         let mut gdb = gdb_mutex.lock().unwrap();
         if let Some(str) = gdb.get_file() {
             file_txt = str;
         }
 
-        imgui::Window::new(im_str!("Code"))
-            .resizable(true)
-            .size([150f32, 300f32], imgui::Condition::Appearing)
-            .build(&ui, || {
-                if !is_window_docked() && left_dock != 0 {
-                    unsafe {
-                        imgui::sys::igDockBuilderDockWindow(im_str!("Code").as_ptr(), left_dock)
-                    }
+        ui::docked_window(&ui, &gdb, "Code", left_top, |ui, gdb| {
+            let mut x = 1.0f32;
+            for (i, l) in file_txt.lines().enumerate() {
+                if (i + 1) == gdb.line as usize {
+                    ui.text_colored([x, 0f32, 0f32, 1.0f32], &l);
+                    x -= 0.5f32;
+                } else {
+                    ui.text_colored([x, x, x, 1.0f32], &l);
                 }
-                let mut x = 1.0f32;
-                for (i, l) in file_txt.lines().enumerate() {
-                    if (i + 1) == gdb.line as usize {
-                        ui.text_colored([x, 0f32, 0f32, 1.0f32], &l);
-                        x -= 0.5f32;
-                    } else {
-                        ui.text_colored([x, x, x, 1.0f32], &l);
-                    }
-                }
-            });
+            }
+        });
 
-        //ui.text_colored([1.0f32, 1.0f32, 1.0f32, 1.0f32], &file_txt);
-        imgui::Window::new(im_str!("Vars"))
-            .resizable(true)
-            .size([150f32, 300f32], imgui::Condition::Appearing)
-            .build(&ui, || {
-                if !is_window_docked() && right_down != 0 {
-                    unsafe {
-                        imgui::sys::igDockBuilderDockWindow(im_str!("Vars").as_ptr(), right_down)
-                    }
-                }
-                ui.columns(2, im_str!("A"), true);
-                for (k, v) in &gdb.variables {
-                    ui.text(k);
-                    ui.next_column();
-                    ui.text(v);
-                    ui.next_column();
-                }
-            });
-        //let wname = im_str!("Vars");
-        //unsafe { imgui::sys::igDockBuilderDockWindow(wname.as_ptr(), imgui::sys::igGetMainViewport()); }
+        ui::docked_window(&ui, &gdb, "Vars", right_down, |ui, gdb| {
+            ui.columns(2, im_str!("A"), true);
+            for (k, v) in &gdb.variables {
+                ui.text(k);
+                ui.next_column();
+                ui.text(v);
+                ui.next_column();
+            }
+        });
 
-        imgui::Window::new(im_str!("Regs"))
-            .resizable(true)
-            .size([150f32, 300f32], imgui::Condition::Appearing)
-            .build(&ui, || {
-                if !is_window_docked() && right_top != 0 {
-                    unsafe {
-                        imgui::sys::igDockBuilderDockWindow(im_str!("Regs").as_ptr(), right_top)
-                    }
-                }
-                ui.columns(2, im_str!("A"), true);
-                for (k, v) in &gdb.registers_ordered() {
-                    ui.text(k);
-                    ui.next_column();
-                    ui.text(v);
-                    ui.next_column();
-                }
-            });
+        ui::docked_window(&ui, &gdb, "Regs", right_top, |ui, gdb| {
+            ui.columns(2, im_str!("A"), true);
+            for (k, v) in &gdb.registers_ordered() {
+                ui.text(k);
+                ui.next_column();
+                ui.text(v);
+                ui.next_column();
+            }
+        });
 
-        imgui::Window::new(im_str!("Asm"))
-            .resizable(true)
-            .size([200f32, 200f32], imgui::Condition::Appearing)
-            .build(&ui, || {
+        ui::docked_window(&ui, &gdb, "Asm", left_down, |ui, gdb| {
+            {
                 imgui::TabBar::new(im_str!("test"))
                     .reorderable(true)
                     .build(&ui, || {
@@ -301,7 +278,6 @@ where
                                 );
                                 ui.separator();
                                 ui.columns(2, im_str!("asm_col"), true);
-                                let mut code = String::new();
                                 for (addr, line) in v {
                                     if line.len() > 0 {
                                         if addr == pc_addr {
@@ -323,7 +299,12 @@ where
                             })
                         }
                     })
-            });
+            }
+        });
+
+        ui::docked_window(&ui, &gdb, "Console", left_down, |ui, gdb| {
+            ui.text_colored([1f32, 1f32, 1f32, 1f32], format!("{}", &gdb.console_output));
+        });
 
         //ui.show_demo_window(&mut true);
 
@@ -336,15 +317,6 @@ where
         renderer.render(ui);
 
         window.gl_swap_window();
-
-        //::std::thread::sleep(max(
-        //    Duration::from_millis(16) - last_frame.elapsed(),
-        //    Duration::from_millis(0),
-        //));
-
-        //graphics::draw_variables(&mut canvas, &gdb.variables, &font_small, &texture_creator);
-        //graphics::draw_regs(&mut canvas, &gdb.registers, &font_small, &texture_creator);
-        //graphics::draw_asm(&mut canvas, &gdb.asm, &font_small, &texture_creator);
     }
 }
 
@@ -355,6 +327,8 @@ fn start_process_thread(
 ) {
     let mut stdin = child.stdin.take().unwrap();
     let stdout = child.stdout.take().unwrap();
+
+    use crate::debugger::DebuggerState;
 
     // Receiving commands and sending them to GDB's stdin
     thread::spawn(move || {
@@ -371,12 +345,12 @@ fn start_process_thread(
             f.read_line(&mut line).unwrap();
             print!("[LINE] {}", line);
 
-            let vals = parser::parse(&line);
+            let gdb: &mut DebuggerState = &mut *gdb_mutex.lock().unwrap();
+            let vals = parser::parse(&line, gdb);
             println!("[PARSER] {:#?}", &vals);
 
             if let Ok(v) = vals {
                 // Here we try to limit the scope were we hold the mutex
-                let mut gdb = gdb_mutex.lock().unwrap();
                 gdb.update(&v);
             }
         }
@@ -414,12 +388,7 @@ fn main() -> Result<(), Error> {
 
     let mut child = start_process(rx, Arc::clone(&gdb_mutex));
 
-    thread::sleep(std::time::Duration::from_millis(100));
-    send_command("start\n", &tx).unwrap();
-    thread::sleep(std::time::Duration::from_millis(100));
-    //TODO: this doesn't work on windows (Test if this works on Linux)
-    send_command("target record-full\n", &tx).unwrap();
-    send_command("-data-list-register-names\n", &tx).unwrap();
+    send_commands(&tx, &STARTUP_COMMANDS, 100);
 
     start_graphics(Arc::clone(&gdb_mutex), move || {}, &tx);
 
