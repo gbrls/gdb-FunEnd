@@ -1,6 +1,6 @@
 # GDB FunEnd
 A fun gdb frontend!
-![](/images/ss0.png)
+![](/images/gdb-funend1.png)
 # Why?
 First time I really needed GDB was when I was debugging the generated code from [a compiler that I was writing](https://github.com/gbrls/rust-microc).
 It work wonders to aid me in the debugging process, but the interface was really bad.
