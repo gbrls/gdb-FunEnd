@@ -3,8 +3,6 @@ use std::io::Read;
 use crate::parser::{self, ConsoleReader};
 use std::collections::HashMap;
 
-// @TOMORROW Implement a memory viewer like a hexdump
-
 /// Stores data about the current GDB execution.
 pub struct DebuggerState {
     files: HashMap<String, String>,
@@ -18,7 +16,7 @@ pub struct DebuggerState {
     pub pc_addr: HashMap<String, usize>,
     register_order: HashMap<String, usize>,
     pub console_output: String,
-    pub memory: Vec<String>,
+    pub memory: (u64, Vec<u64>),
 }
 
 const REG_ORD: [&str; 7] = ["rax", "rbx", "rcx", "rdx", "rex", "rbp", "rsp"];
@@ -107,7 +105,7 @@ impl DebuggerState {
             pc_addr: HashMap::new(),
             register_order: build_register_ord(),
             console_output: String::new(),
-            memory: Vec::new(),
+            memory: (0, Vec::new()),
         }
     }
 
@@ -261,11 +259,14 @@ impl DebuggerState {
 
         // Reading the memory
         query_list(query, "memory", |mem_meta| {
+            query_str(&mem_meta[0], "addr", |start_addr| {
+                self.memory.0 = from_hex(start_addr) as u64;
+            });
             query_list(&mem_meta[0], "data", |data| {
-                self.memory.clear();
+                self.memory.1.clear();
                 for v in data {
                     if let crate::parser::GDBVal::Str(dat) = v {
-                        self.memory.push(dat.to_owned());
+                        self.memory.1.push(from_hex(&dat) as u64);
                     }
                 }
             });

@@ -73,7 +73,7 @@ const STEP_COMMANDS: [&str; 5] = [
     "-stack-list-locals 1\n",
     r#" -data-disassemble -s $pc -e "$pc + 20" -- 0 
                 "#,
-    r#" -data-read-memory $pc x 1 1 32
+    r#" -data-read-memory &arr x 1 1 128
                 "#,
 ];
 
@@ -327,13 +327,18 @@ where
         });
 
         ui::docked_window(&ui, &gdb, "memory", right_down, |ui, gdb| {
-            let mut s = String::new();
-            for (i, line) in gdb.memory.iter().enumerate() {
-                s.push_str(&line);
-                s.push_str(" ");
-                if (i+1) % 7 == 0 {
+            let (addr, mem) = &gdb.memory;
+            let mut addr = *addr;
+            let mut s = format!("{:#08x}  ", addr);
+            for (i, line) in mem.iter().enumerate() {
+                s.push_str(&format!("{:02x}", line));
+                s.push(' ');
+                addr += 1;
+
+                if (i + 1) % 8 == 0 {
                     ui.text_colored([1f32, 1f32, 1f32, 1f32], &s);
-                    s.clear();
+                    // cleaning the string for the next line
+                    s = format!("{:#08x}  ", addr);
                 }
             }
 
@@ -408,7 +413,6 @@ fn start_process(
 
     child
 }
-
 
 fn main() -> Result<(), Error> {
     let (tx, rx) = channel();

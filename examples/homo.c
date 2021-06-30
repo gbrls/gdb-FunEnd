@@ -19,10 +19,19 @@ int main() {
     printf("%d\n",*p);
 
     int x;
+    unsigned char* fnp;
 
     x = t1();
     x = t2();
+
+    fnp = &t3;
+
     x = t3();
+
+    int a;
+    a = 10;
+    // this is basically a NOP
+    while(a--) {}
 
     return 0;
 }
