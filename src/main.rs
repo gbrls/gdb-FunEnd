@@ -3,7 +3,6 @@ extern crate imgui;
 extern crate imgui_opengl_renderer;
 extern crate imgui_sdl2;
 extern crate sdl2;
-use std::os::raw::c_char;
 
 /*
 @TODO:
@@ -16,8 +15,6 @@ use std::os::raw::c_char;
 use imgui::im_str;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
-use sdl2::pixels::Color;
-use sdl2::rect::Rect;
 use std::collections::HashSet;
 use std::io::{BufRead, BufReader, Error, Write};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
@@ -46,7 +43,7 @@ use ui::is_window_docked;
 fn send_commands(sender: &Sender<String>, commands: &[&str], time: u64) {
     for command in commands {
         send_command(command, &sender).unwrap();
-        thread::sleep(std::time::Duration::from_millis(time));
+        sleep(Duration::from_millis(time));
     }
 }
 
@@ -272,8 +269,8 @@ where
                     .reorderable(true)
                     .build(&ui, || {
                         for (k, v) in &gdb.asm {
-                            let mut s: &imgui::ImStr;
-                            let mut c_str: std::ffi::CString;
+                            let s: &imgui::ImStr;
+                            let c_str: std::ffi::CString;
                             unsafe {
                                 c_str = std::ffi::CString::new(k.as_str()).unwrap();
                                 s = imgui::ImStr::from_utf8_with_nul_unchecked(
@@ -312,8 +309,8 @@ where
             }
         });
 
-        ui::docked_window(&ui, &mut gdb, "Console", left_down, |ui, gdb| {
-            ui.text_colored([1f32, 1f32, 1f32, 1f32], format!("{}", &gdb.console_output));
+        ui::docked_window(&ui, &gdb, "Console", left_down, |ui, gdb| {
+            ui.text_colored([1f32, 1f32, 1f32, 1f32], &gdb.console_output);
             if imgui::InputText::new(ui, im_str!(""), &mut input_buf)
                 .enter_returns_true(true)
                 .build()
@@ -322,7 +319,6 @@ where
                 cmd.push('\n');
                 send_command(&cmd, &sender).unwrap();
                 input_buf.clear();
-                //println!("[INPUT] Enter");
             }
         });
 
@@ -330,19 +326,23 @@ where
             let (addr, mem) = &gdb.memory;
             let mut addr = *addr;
             let mut s = format!("{:#08x}  ", addr);
-            for (i, line) in mem.iter().enumerate() {
-                s.push_str(&format!("{:02x}", line));
+            let mut col = 0.2f32;
+            for (i, val) in mem.iter().enumerate() {
+                if *val != 0u64 {
+                    col = 1f32;
+                }
+                s.push_str(&format!("{:02x}", val));
                 s.push(' ');
                 addr += 1;
 
                 if (i + 1) % 8 == 0 {
-                    ui.text_colored([1f32, 1f32, 1f32, 1f32], &s);
+                    ui.text_colored([col, col, col, 1f32], &s);
                     // cleaning the string for the next line
                     s = format!("{:#08x}  ", addr);
+                    col = 0.2f32;
                 }
             }
-
-            ui.text_colored([1f32, 1f32, 1f32, 1f32], &s);
+            //@Error maybe some values won't be rendered here
         });
 
         //ui.show_demo_window(&mut true);
