@@ -1,4 +1,6 @@
 #include "b.h"
+extern int amazing_func();
+
 int do_something(int x, int y) {
     x *= 2;
     y += 5;
@@ -17,6 +19,8 @@ int do_something(int x, int y) {
 }
 
 int main() {
+
+    int y = amazing_func();
 
     int z = do_something(2, 5);
 

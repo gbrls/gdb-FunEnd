@@ -66,17 +66,20 @@ pub fn is_split(id: u32) -> bool {
 
 const STEP_COMMANDS: [&str; 5] = [
     "step\n",
-    "-data-list-register-values x 0 1 2 3 4 5 6 7 8 9 10\n",
+    "-data-list-register-values x\n",
     "-stack-list-locals 1\n",
     r#" -data-disassemble -s $pc -e "$pc + 20" -- 0 
                 "#,
-    r#" -data-read-memory &arr x 1 1 128
+    r#" -data-read-memory $sp x 1 1 128
                 "#,
 ];
 
 const STARTUP_COMMANDS: [&str; 3] = [
-    "start\n",
-    "target record-full\n",
+    "target remote :1234\n",
+    "break main\n",
+
+    //"start\n",
+    //"target record-full\n",
     "-data-list-register-names\n",
 ];
 
@@ -400,9 +403,9 @@ fn start_process(
     receiver: Receiver<String>,
     gdb_mutex: Arc<Mutex<debugger::DebuggerState>>,
 ) -> Child {
-    let mut child = Command::new("gdb")
+    let mut child = Command::new("gdb-multiarch")
         .arg("--interpreter=mi3")
-        .arg("./examples/a.exe")
+        .arg("./arm-examples/a")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
@@ -419,12 +422,34 @@ fn main() -> Result<(), Error> {
 
     let gdb_mutex = Arc::new(Mutex::new(debugger::DebuggerState::new()));
 
+    // qemu-aarch64 -g 1234 ./a
+    let mut qemu = Command::new("qemu-aarch64")
+        .arg("-g")
+        .arg("1234")
+        .arg("arm-examples/a")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("Failed to start qemu");
+
+    let stdout = qemu.stdout.take().unwrap();
+    thread::spawn(move || {
+        let mut f = BufReader::new(stdout);
+        loop {
+            let mut line = String::new();
+            f.read_line(&mut line).unwrap();
+            print!("[QEMU] {}", line);
+        }
+    });
+
     let mut child = start_process(rx, Arc::clone(&gdb_mutex));
 
     send_commands(&tx, &STARTUP_COMMANDS, 100);
 
     start_graphics(Arc::clone(&gdb_mutex), move || {}, &tx);
 
+    qemu.kill()?;
     child.kill()?;
+
     Ok(())
 }

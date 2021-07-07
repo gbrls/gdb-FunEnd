@@ -19,7 +19,7 @@ pub struct DebuggerState {
     pub memory: (u64, Vec<u64>),
 }
 
-const REG_ORD: [&str; 7] = ["rax", "rbx", "rcx", "rdx", "rex", "rbp", "rsp"];
+const REG_ORD: [&str; 7] = ["x0", "x1", "x2", "x3", "x4", "x5", "x6"];
 
 fn build_register_ord() -> HashMap<String, usize> {
     let mut h = HashMap::new();
