@@ -70,14 +70,13 @@ const STEP_COMMANDS: [&str; 5] = [
     "-stack-list-locals 1\n",
     r#" -data-disassemble -s $pc -e "$pc + 20" -- 0 
                 "#,
-    r#" -data-read-memory $sp x 1 1 128
+    r#" -data-read-memory $sp x 1 1 1028
                 "#,
 ];
 
 const STARTUP_COMMANDS: [&str; 3] = [
     "target remote :1234\n",
     "break main\n",
-
     //"start\n",
     //"target record-full\n",
     "-data-list-register-names\n",
@@ -402,10 +401,11 @@ fn start_process_thread(
 fn start_process(
     receiver: Receiver<String>,
     gdb_mutex: Arc<Mutex<debugger::DebuggerState>>,
+    file_to_debug: &str,
 ) -> Child {
     let mut child = Command::new("gdb-multiarch")
         .arg("--interpreter=mi3")
-        .arg("./arm-examples/a")
+        .arg(file_to_debug)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
@@ -417,32 +417,53 @@ fn start_process(
     child
 }
 
+fn setup_input(args: &Vec<String>) -> &str {
+    let mut cmd = Command::new("aarch64-linux-gnu-gcc-8")
+        .args(args)
+        .arg("-g")
+        .arg("-o")
+        .arg("tmp")
+        .arg("-static")
+        .output() 
+        .unwrap();
+
+    "./tmp"
+}
+
 fn main() -> Result<(), Error> {
     let (tx, rx) = channel();
 
     let gdb_mutex = Arc::new(Mutex::new(debugger::DebuggerState::new()));
 
+    let mut binary_to_be_debugged = "./arm-examples/a";
+    let args: Vec<String> = std::env::args().skip(1).collect();
+
+    if !args.is_empty() {
+        binary_to_be_debugged = setup_input(&args);
+    }
+
     // qemu-aarch64 -g 1234 ./a
     let mut qemu = Command::new("qemu-aarch64")
         .arg("-g")
         .arg("1234")
-        .arg("arm-examples/a")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
+        .arg(binary_to_be_debugged)
+    //    .stdout(Stdio::piped())
         .spawn()
         .expect("Failed to start qemu");
 
-    let stdout = qemu.stdout.take().unwrap();
-    thread::spawn(move || {
-        let mut f = BufReader::new(stdout);
-        loop {
-            let mut line = String::new();
-            f.read_line(&mut line).unwrap();
-            print!("[QEMU] {}", line);
-        }
-    });
+    let mut child = start_process(rx, Arc::clone(&gdb_mutex), binary_to_be_debugged);
 
-    let mut child = start_process(rx, Arc::clone(&gdb_mutex));
+    //let stdout = qemu.stdout.take().unwrap();
+    //thread::spawn(move || {
+    //    let mut f = BufReader::new(stdout);
+    //    loop {
+    //        let mut line = String::new();
+    //        f.read_line(&mut line).unwrap();
+    //        print!("[QEMU] {}", line);
+    //    }
+    //});
+
+
 
     send_commands(&tx, &STARTUP_COMMANDS, 100);
 

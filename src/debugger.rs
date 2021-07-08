@@ -19,7 +19,11 @@ pub struct DebuggerState {
     pub memory: (u64, Vec<u64>),
 }
 
-const REG_ORD: [&str; 7] = ["x0", "x1", "x2", "x3", "x4", "x5", "x6"];
+const REG_ORD: [&str; 33] = [
+    "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8", "x9", "x10", "x11", "x12", "x13", "x14",
+    "x15", "x16", "x17", "x18", "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27",
+    "x28", "x29", "x30", "sp", "pc"
+];
 
 fn build_register_ord() -> HashMap<String, usize> {
     let mut h = HashMap::new();
@@ -231,8 +235,11 @@ impl DebuggerState {
                                 }
 
                                 query_str(line, "inst", |i| {
-                                    self.asm.get_mut(fname).unwrap()[idx] =
-                                        (addr_usize, i.to_string());
+                                    let mut line = String::new();
+                                    i.chars().for_each(|c| {
+                                        read_cleaned(c, &mut line);
+                                    });
+                                    self.asm.get_mut(fname).unwrap()[idx] = (addr_usize, line);
                                 });
                             })
                         }
@@ -289,21 +296,7 @@ impl DebuggerState {
 
 impl crate::parser::ConsoleReader for DebuggerState {
     fn read(&mut self, c: char) {
-        // This is kind of ugly but it works
-        // We want to remove the prev \ iff we are not a \
-        // We also want to remove the "
-        match self.console_output.chars().last() {
-            Some(last) if last == '\\' => {
-                if c != '\\' {
-                    self.console_output.pop().unwrap();
-                }
-            }
-            _ if c != '\"' => {
-                self.console_output.push(c);
-            }
-
-            _ => {}
-        }
+        read_cleaned(c, &mut self.console_output);
     }
 }
 
@@ -311,6 +304,27 @@ fn from_hex(hex: &str) -> usize {
     use std::usize;
     let without_prefix = hex.trim_start_matches("0x");
     usize::from_str_radix(without_prefix, 16).unwrap()
+}
+
+fn read_cleaned(c: char, v: &mut String) {
+    // This is kind of ugly but it works
+    // We want to remove the prev \ iff we are not a \
+    // We also want to remove the "
+    match v.chars().last() {
+        Some(last) if last == '\\' => {
+            if c == 't' {
+                v.pop().unwrap();
+                v.push('\t');
+            } else if c != '\\' {
+                v.pop().unwrap();
+            }
+        }
+        _ if c != '\"' => {
+            v.push(c);
+        }
+
+        _ => {}
+    }
 }
 
 mod tests {
