@@ -23,9 +23,9 @@ extern i64 qst9(char* set, char* pat);
 
 void assert_eq(i64 a, i64 b) {
 	if(a != b) {
-		//printf("[ERROR] Expected %lld found %lld\n", b, a);
+		printf("[ERROR] Expected %lld found %lld\n", b, a);
 	} else {
-		//printf("[OK]\n");
+		printf("[OK]\n");
 	}
 }
 

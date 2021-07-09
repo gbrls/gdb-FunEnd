@@ -3,6 +3,8 @@ extern crate imgui;
 extern crate imgui_opengl_renderer;
 extern crate imgui_sdl2;
 extern crate sdl2;
+#[macro_use]
+extern crate colour;
 
 /*
 @TODO:
@@ -409,7 +411,7 @@ fn start_process(
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
-        .expect("Failed to start process");
+        .expect("Failed to start gdb");
 
     start_process_thread(&mut child, receiver, gdb_mutex);
     println!("Started process: {}", child.id());
@@ -424,13 +426,72 @@ fn setup_input(args: &Vec<String>) -> &str {
         .arg("-o")
         .arg("tmp")
         .arg("-static")
-        .output() 
-        .unwrap();
+        .output()
+        .expect("Failed to compile");
 
     "./tmp"
 }
 
+fn check_command(cmds: &[&str]) -> bool {
+    fn helper(cmds: &[&str]) -> bool {
+        let cmd = Command::new(cmds[0]).args(&cmds[1..]).output();
+        if let Err(_) = cmd {
+            false
+        } else {
+            true
+        }
+    }
+    print!("Looking for [{}]... ", cmds[0]);
+    let res = helper(cmds);
+    if res {
+        green_ln!("OK");
+    } else {
+        red_ln!("not found");
+    }
+
+    res
+}
+
+fn check_commands(cmds: &[&str]) -> bool {
+    let mut all_found = true;
+
+    for cmd in cmds {
+        let cmd_str: Vec<&str> = cmd.split_whitespace().collect();
+        if let false = check_command(&cmd_str) {
+            all_found = false
+        }
+    }
+
+    all_found
+}
+
+fn list_dir() {
+    let out = Command::new("ls").output().unwrap();
+    yellow_ln!("Dir: [{}]", std::str::from_utf8(&out.stdout).unwrap());
+}
+
+//@TODO: Use the command calling information this so this is not hard coded
+const COMMANDS_TO_CHECK: [&str; 3] = [
+    "qemu-aarch64 --version",
+    "gdb-multiarch --version",
+    "aarch64-linux-gnu-gcc-8 --version",
+];
+
+const DEFAULT_FILE: &str = r#"
+int main() {
+    int x = 10;
+    int y = 2;
+
+    return 2 * x + y;
+}
+"#;
+
 fn main() -> Result<(), Error> {
+    list_dir();
+    if check_commands(&COMMANDS_TO_CHECK) == false {
+        panic!("Some dependecies are missimg");
+    }
+
     let (tx, rx) = channel();
 
     let gdb_mutex = Arc::new(Mutex::new(debugger::DebuggerState::new()));
@@ -442,31 +503,15 @@ fn main() -> Result<(), Error> {
         binary_to_be_debugged = setup_input(&args);
     }
 
-    // qemu-aarch64 -g 1234 ./a
     let mut qemu = Command::new("qemu-aarch64")
         .arg("-g")
         .arg("1234")
         .arg(binary_to_be_debugged)
-    //    .stdout(Stdio::piped())
         .spawn()
         .expect("Failed to start qemu");
 
     let mut child = start_process(rx, Arc::clone(&gdb_mutex), binary_to_be_debugged);
-
-    //let stdout = qemu.stdout.take().unwrap();
-    //thread::spawn(move || {
-    //    let mut f = BufReader::new(stdout);
-    //    loop {
-    //        let mut line = String::new();
-    //        f.read_line(&mut line).unwrap();
-    //        print!("[QEMU] {}", line);
-    //    }
-    //});
-
-
-
     send_commands(&tx, &STARTUP_COMMANDS, 100);
-
     start_graphics(Arc::clone(&gdb_mutex), move || {}, &tx);
 
     qemu.kill()?;

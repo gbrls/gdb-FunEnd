@@ -10,6 +10,7 @@ edition = "2018"
 #imgui = "0.7.0"
 #imgui-opengl-renderer = "0.11.0"
 gl = "0.14.0"
+colour = "0.6.0"
 
 imgui = { git = "https://github.com/NoxWings/imgui-rs.git", tag = "1.81dock" }
 imgui-sdl2 = { git = "https://github.com/NoxWings/rust-imgui-sdl2.git" }
