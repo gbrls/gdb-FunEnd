@@ -1,8 +1,8 @@
 # GDB FunEnd
 A fun gdb frontend!
+![](/images/gdb-funend1.png)
 # Instalation & Usage
 Go to the [latest release page](https://github.com/gbrls/gdb-FunEnd/releases/tag/0.0.1)
-![](/images/gdb-funend1.png)
 # Why?
 First time I really needed GDB was when I was debugging the generated code from [a compiler that I was writing](https://github.com/gbrls/rust-microc).
 It work wonders to aid me in the debugging process, but the interface was really bad.
