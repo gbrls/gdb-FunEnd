@@ -8,6 +8,8 @@ extern crate colour;
 
 /*
 @TODO:
+    - Create a stdout window
+    - Properly handle compilation errors
     - Show line numbers!
     - Use traits to Send, Parse and Draw
     - Create a checkbox to enable debugging the parser, queries, etc;
