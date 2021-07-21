@@ -53,6 +53,15 @@ int example_string(char* str) {
 int main(void)
 {
 
+    puts("~\"Master 0\"\n");
+    fflush(stdout);
+    puts("~\"Yoda 1\"\n");
+    fflush(stdout);
+    puts("This should be read on stdout");
+    fflush(stdout);
+    printf("Prints: %d %d\n", 12 * 5, 6 * 3);
+    fflush(stdout);
+
     test1(5, 5);
     test1(10, 3);
     test1(3, 10);

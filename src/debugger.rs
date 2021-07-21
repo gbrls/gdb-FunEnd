@@ -49,7 +49,8 @@ where
     }
 
     if !found {
-        println!("[QUERY] Expected {:?} found {:?}", key, query);
+        //println!("[QUERY] Expected {:?} found {:?}", key, query);
+        println!("[QUERY] Expected {:?}", query);
     }
 }
 

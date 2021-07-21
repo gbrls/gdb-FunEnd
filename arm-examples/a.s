@@ -1,9 +1,11 @@
 	.globl qst1, qst2, qst3, qst4, qst5, qst6, qst7, qst8, fat, mod10, qst9, div, min
 
+
 qst1:
 	sub sp, sp, #0x20    // alocando memoria na pilha
 	stur x0, [sp, #0x0]  // a
 	stur x1, [sp, #0x8]  // b
+    mov x2, #0xFF
 
 	// Solucao em si
 	ldur x0, [sp, #0x0]
@@ -14,6 +16,8 @@ qst1:
 
 	add sp, sp, #0x20 // liberando o stack frame
 	br X30			  // retornando do procedimento
+
+
 
 qst2:
 	sub  sp, sp, #0x30   // alocando espaco na pilha

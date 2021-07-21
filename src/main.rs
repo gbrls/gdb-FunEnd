@@ -402,6 +402,39 @@ fn start_process_thread(
     });
 }
 
+fn start_qemu_reader(child: &mut Child, gdb_mutex: Arc<Mutex<debugger::DebuggerState>>) {
+    use crate::debugger::DebuggerState;
+
+    let stdout = child.stdout.take().unwrap();
+    // Reading and processing GDB stdout
+    thread::spawn(move || {
+        let mut f = BufReader::new(stdout);
+        loop {
+            println!("Waiting for some line");
+            let mut line = String::new();
+            f.read_line(&mut line).unwrap();
+            red_ln!("[QEMU] Waiting for input...");
+            println!("[QEMU] {}", line);
+
+            //{
+            //    let gdb: &mut DebuggerState = &mut *gdb_mutex.lock().unwrap();
+            //    gdb.stdout.push_str(&line);
+            //    //gdb.stdout = line;
+            //}
+            //}
+        }
+    });
+}
+
+// fn consume_stderr(stderr: Vec<u8>) {
+//     let err = std::str::from_utf8(stderr).expect("Error getting stdout");
+//
+//     if !err.is_empty() {
+//         red_ln!(err);
+//         panic!("A command has failed");
+//     }
+// }
+
 fn start_process(
     receiver: Receiver<String>,
     gdb_mutex: Arc<Mutex<debugger::DebuggerState>>,
@@ -430,6 +463,13 @@ fn setup_input(args: &Vec<String>) -> &str {
         .arg("-static")
         .output()
         .expect("Failed to compile");
+
+    let err = std::str::from_utf8(&cmd.stderr).expect("Failed to read GCC's stdout");
+
+    if !err.is_empty() {
+        red_ln!(err);
+        panic!("Error reading GCC's stdout");
+    }
 
     "./tmp"
 }

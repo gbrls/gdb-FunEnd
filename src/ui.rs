@@ -29,3 +29,19 @@ pub fn docked_window<F>(
             f(ui, gdb);
         });
 }
+
+pub fn floating_window<F>(
+    ui: &imgui::Ui,
+    gdb: &crate::debugger::DebuggerState,
+    name: &str,
+    mut f: F,
+) where
+    F: FnMut(&imgui::Ui, &crate::debugger::DebuggerState),
+{
+    imgui::Window::new(&imgui::ImString::new(name))
+        .resizable(true)
+        .size([150f32, 300f32], imgui::Condition::Appearing)
+        .build(&ui, || {
+            f(ui, gdb);
+        });
+}

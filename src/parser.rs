@@ -4,6 +4,7 @@ pub trait ConsoleReader {
     fn read(&mut self, c: char);
 }
 
+#[derive(Debug)]
 struct SimpleReader {
     text: String,
 }
@@ -61,7 +62,6 @@ pub fn parse(str: &str, reader: &mut impl ConsoleReader) -> Result<GDBVal, Parse
 
 pub struct Parser {
     tokens: Vec<GDBToken>,
-    vals: Vec<HashMap<String, GDBVal>>,
     cur: usize,
 }
 
@@ -70,7 +70,6 @@ impl Parser {
         Parser {
             tokens,
             cur: 0,
-            vals: Vec::new(),
         }
     }
 
@@ -249,7 +248,9 @@ mod tests {
         use super::*;
         let str = r#" registers=["0","1","2","4","5","6","7","8","9", "10","11","13","14","15","16","17","18","19","20","21","22","23", "24","25","26","27","28","30","31","64","65","66","67","69"] "#;
 
-        println!("{:#?}", parse(str));
+
+        let mut r = SimpleReader::new();
+        println!("{:#?}", parse(str, &mut r));
 
         let str = r#" register-names=["r0","r1","r2","r3","r4","r5","r6","r7",
             "r8","r9","r10","r11","r12","r13","r14","r15","r16","r17","r18",
@@ -259,6 +260,39 @@ mod tests {
             "f21","f22","f23","f24","f25","f26","f27","f28","f29","f30","f31",
             "", "pc","ps","cr","lr","ctr","xer"]"#;
 
-        println!("{:#?}", parse(str));
+        println!("{:#?}", parse(str, &mut r));
+    }
+
+    #[test]
+    fn parse_stdout() {
+        use super::*;
+        let mut r = SimpleReader::new();
+
+
+        let str = r#"
+            ~"Temporary breakpoint 1, main () at stdout.c:5\n"
+            ~"5\t    puts(\"Hello: 1\");\n"
+            *stopped,reason="breakpoint-hit",disp="del",bkptno="1",frame={addr="0x0000000000400b71",func="main",args=[],file="stdout.c",fullname="/home/gabalmei/gdb-FunEnd/examples/stdout.c",line="5"},thread-id="1",stopped-threads="all",core="3"
+            =breakpoint-deleted,id="1"
+            (gdb)
+            step
+            &"step\n"
+            ^running
+            *running,thread-id="all"
+            (gdb)
+            ~"Hello: 1"
+            ~"6\t    puts(\"There: 2\");\n"
+            *stopped,reason="end-stepping-range",frame={addr="0x0000000000400b7d",func="main",args=[],file="stdout.c",fullname="/home/gabalmei/gdb-FunEnd/examples/stdout.c",line="6"},thread-id="1",stopped-threads="all",core="6"
+            (gdb)
+            ~"Test: 2"
+            "#;
+
+        let tokens = tokenize(str, &mut r);
+        yellow_ln!("{:?}", tokens);
+        let mut p = Parser::new(tokens);
+        dark_cyan_ln!("===========>");
+        yellow_ln!("{:#?}", p.parse());
+        dark_cyan_ln!("===========>");
+        yellow_ln!("{:#?}", r);
     }
 }
