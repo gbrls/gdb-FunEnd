@@ -20,6 +20,14 @@ We have a few threads running, those are the main ones:
 ### Why Rust?
 I first considered writing this in C++, but then I thought about writing multithreaded code in it.
 
+# Missing features
+- Browse variables in a hierarchical manner.
+- Set breakpoints
+
+# Future!
+This application will be refactored into a separate library and a frontend,
+this way many applications will be able to use GDB's capabilities in a easy way.
+
 # Contributing
 If you want to help you need to setup the developing enviroment.
 - Install the rust toolchain https://rustup.rs/
